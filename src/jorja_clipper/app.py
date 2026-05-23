@@ -1,7 +1,18 @@
 """Main application entry point."""
 
+import ctypes
+import locale
 import sys
 from pathlib import Path
+
+
+# Fix libmpv locale crash on Linux — must run before any mpv/Qt imports
+if sys.platform == "linux":
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.setlocale(ctypes.c_int(0), b"C")  # LC_NUMERIC = 0
+    except Exception:
+        locale.setlocale(locale.LC_NUMERIC, "C")
 
 from PySide6.QtWidgets import QApplication
 
