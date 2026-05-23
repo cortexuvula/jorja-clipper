@@ -27,8 +27,8 @@ a = Analysis(
     datas=[],
     hiddenimports=['mpv'],
     hookspath=[],
+    runtime_hooks=['runtime_hook_mpv.py'],
     hooksconfig={},
-    runtime_hooks=[],
     excludes=[],
     noarchive=False,
 )
