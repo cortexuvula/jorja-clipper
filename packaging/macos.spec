@@ -1,10 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for macOS."""
+"""PyInstaller spec for macOS — bundles libmpv."""
+
+import os
+import glob
+
+# Find libmpv.dylib — installed by `brew install mpv`
+_mpv_libs = []
+for pattern in [
+    "/opt/homebrew/lib/libmpv*.dylib",   # Apple Silicon
+    "/usr/local/lib/libmpv*.dylib",      # Intel
+]:
+    _mpv_libs.extend(glob.glob(pattern))
+
+_binaries = []
+for lib in sorted(set(_mpv_libs)):
+    real = os.path.realpath(lib)
+    if real not in [b[0] for b in _binaries]:
+        _binaries.append((real, os.path.basename(lib)))
 
 a = Analysis(
     ['../src/jorja_clipper/app.py'],
     pathex=[],
-    binaries=[],
+    binaries=_binaries,
     datas=[],
     hiddenimports=['mpv'],
     hookspath=[],
