@@ -1,0 +1,1 @@
+"""Jorja Clipper GUI components."""

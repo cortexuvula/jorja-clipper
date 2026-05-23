@@ -57,11 +57,16 @@ class Clipper:
         cmd = [
             "ffmpeg",
             "-y",
-            "-ss", str(start),
-            "-i", str(video_path),
-            "-t", str(duration),
-            "-c", "copy",
-            "-avoid_negative_ts", "make_zero",
+            "-ss",
+            str(start),
+            "-i",
+            str(video_path),
+            "-t",
+            str(duration),
+            "-c",
+            "copy",
+            "-avoid_negative_ts",
+            "make_zero",
             str(output_path),
         ]
 

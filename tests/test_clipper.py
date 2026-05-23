@@ -1,11 +1,8 @@
 """Tests for the clip engine."""
 
-import json
 import subprocess
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from jorja_clipper.clipper import Clipper, ClipResult
 

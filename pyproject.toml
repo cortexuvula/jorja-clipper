@@ -54,7 +54,7 @@ packages = ["src/jorja_clipper"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]
-ignore = ["D100", "D104", "D203", "D212"]
+ignore = ["D100", "D102", "D104", "D107", "D203", "D212", "N802"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

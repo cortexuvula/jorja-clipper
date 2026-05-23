@@ -1,8 +1,6 @@
 """Tests for the player wrapper."""
 
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from jorja_clipper.player import Player
 
@@ -33,7 +31,7 @@ def test_player_toggle_pause():
 
 
 def test_player_seek():
-    """seek calls mpv.command with the correct offset."""
+    """Seek calls mpv.command with the correct offset."""
     p = Player.__new__(Player)
     p._mpv = MagicMock()
     p.seek(10.0)
