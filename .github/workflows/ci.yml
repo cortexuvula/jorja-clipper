@@ -101,6 +101,12 @@ jobs:
         run: |
           pyinstaller --clean ${{ matrix.spec_file }}
 
+      - name: Zip macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          zip -r jorja-clipper-macos.zip "Jorja Clipper.app"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -108,7 +114,7 @@ jobs:
           path: |
             dist/jorja-clipper
             dist/jorja-clipper.exe
-            dist/Jorja Clipper.app
+            dist/jorja-clipper-macos.zip
           if-no-files-found: warn
 
   release:
