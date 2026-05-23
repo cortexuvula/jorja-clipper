@@ -51,6 +51,14 @@ class Clipper:
     ) -> ClipResult:
         """Save a clip using ffmpeg stream-copy (no re-encoding)."""
         start, end = self.calculate_times(current_pos, video_duration)
+        if end <= start:
+            return ClipResult(
+                path="",
+                start_time=start,
+                end_time=end,
+                success=False,
+                error="Invalid time range (end <= start)",
+            )
         duration = end - start
         output_path = self.build_output_path(video_path, clip_number)
 

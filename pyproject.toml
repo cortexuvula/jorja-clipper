@@ -44,7 +44,7 @@ Repository = "https://github.com/cortexuvula/jorja-clipper"
 Issues = "https://github.com/cortexuvula/jorja-clipper/issues"
 
 [project.scripts]
-jorja-clipper = "jorja_clipper.main:main"
+jorja-clipper = "jorja_clipper.app:main"
 
 [tool.hatch.version]
 path = "src/jorja_clipper/__init__.py"
