@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jorja-clipper"
+version = "0.1.0"
+description = "One-key video clipper for sports highlights"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.6",
+    "python-mpv>=0.5.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-qt>=4.0",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+jorja-clipper = "jorja_clipper.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/jorja_clipper"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
