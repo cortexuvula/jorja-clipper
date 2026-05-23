@@ -42,3 +42,9 @@ class ClipListModel(QAbstractListModel):
         entry = ClipEntry(path=path, start_time=start_time, end_time=end_time)
         self._clips.append(entry)
         self.endInsertRows()
+
+    def clip_at(self, index: int) -> ClipEntry | None:
+        """Return the clip entry at the given row index."""
+        if 0 <= index < len(self._clips):
+            return self._clips[index]
+        return None

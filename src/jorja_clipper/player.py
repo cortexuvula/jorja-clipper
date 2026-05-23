@@ -1,5 +1,6 @@
 """Player wrapper around python-mpv."""
 
+import sys
 from pathlib import Path
 
 import mpv
@@ -9,14 +10,26 @@ class Player:
     """Wraps mpv for video playback with clean interface."""
 
     def __init__(self):
-        self._mpv = mpv.MPV(
-            input_default_bindings=False,
-            input_vo_keyboard=False,
-            osc=False,
-        )
+        self._mpv = None
         self._duration = 0.0
         self._current_pos = 0.0
         self._paused = True
+        self._wid = None
+
+    def _ensure_mpv(self):
+        if self._mpv is not None:
+            return
+        kwargs = {
+            "input_default_bindings": False,
+            "input_vo_keyboard": False,
+            "osc": False,
+        }
+        if sys.platform.startswith("darwin"):
+            # macOS: libmpv + NSView via wid option.
+            kwargs["vo"] = "libmpv"
+        if self._wid is not None:
+            kwargs["wid"] = self._wid
+        self._mpv = mpv.MPV(**kwargs)
 
         @self._mpv.property_observer("duration")
         def _on_duration(_name, value):
@@ -27,6 +40,10 @@ class Player:
         def _on_time_pos(_name, value):
             if value is not None:
                 self._current_pos = float(value)
+
+    def init_with_wid(self, wid: int) -> None:
+        """Bind mpv to a native widget handle (lazy init)."""
+        self._wid = wid
 
     @property
     def duration(self) -> float:
@@ -45,19 +62,26 @@ class Player:
 
     def load(self, path: Path) -> None:
         """Load a video file."""
+        self._ensure_mpv()
         self._mpv.play(str(path))
         self._mpv.pause = "yes"
         self._paused = True
 
     def toggle_pause(self) -> None:
         """Toggle play/pause."""
+        if self._mpv is None:
+            return
         self._paused = not self._paused
         self._mpv.pause = "yes" if self._paused else "no"
 
     def seek(self, offset: float) -> None:
         """Seek by relative offset in seconds."""
+        if self._mpv is None:
+            return
         self._mpv.command("seek", offset, "relative")
 
     def shutdown(self) -> None:
         """Clean up mpv instance."""
-        self._mpv.terminate()
+        if self._mpv is not None:
+            self._mpv.terminate()
+            self._mpv = None

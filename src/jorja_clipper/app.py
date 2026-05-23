@@ -23,7 +23,7 @@ def main():
         buffer_before=settings.buffer_before,
         buffer_after=settings.buffer_after,
     )
-    window = MainWindow(player, clipper)
+    window = MainWindow(player, clipper, settings)
     window.show()
 
     # If a video file was passed as argument, load it
@@ -33,7 +33,7 @@ def main():
             player.load(video_path)
             window._current_video = video_path
             window._status.setText(f"Loaded: {video_path.name}")
-            window.setWindowTitle(f"Jorja Clipper \u2014 {video_path.name}")
+            window.setWindowTitle(f"Jorja Clipper — {video_path.name}")
 
     sys.exit(app.exec())
 
