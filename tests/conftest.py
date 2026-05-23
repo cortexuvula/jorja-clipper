@@ -1,13 +1,24 @@
-"""Shared test fixtures."""
+"""Shared test fixtures — mpv mock and test video generation."""
 
-import subprocess
+import sys
+import types
+from unittest.mock import MagicMock
 
 import pytest
+
+# Mock the mpv module BEFORE any test imports player.py.
+# python-mpv requires libmpv at import time; CI runners on macOS/Windows
+# don't have it. We inject a fake module so collection never hits the OSError.
+_mpv_mock = types.ModuleType("mpv")
+_mpv_mock.MPV = MagicMock
+sys.modules.setdefault("mpv", _mpv_mock)
 
 
 @pytest.fixture
 def test_video(tmp_path):
     """Generate a 10-second test video using ffmpeg."""
+    import subprocess
+
     video = tmp_path / "test.mp4"
     subprocess.run(
         [
