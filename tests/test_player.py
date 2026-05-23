@@ -26,7 +26,10 @@ def test_player_toggle_pause():
     p._paused = True
     p.toggle_pause()
     assert p._paused is False
-    p._mpv.pause.assert_called_with("yes")
+    assert p._mpv.pause == "no"
+    p.toggle_pause()
+    assert p._paused is True
+    assert p._mpv.pause == "yes"
 
 
 def test_player_seek():
