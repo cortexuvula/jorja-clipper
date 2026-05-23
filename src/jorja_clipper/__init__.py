@@ -1,3 +1,3 @@
-"""Jorja Clipper — One-key video clipper for sports highlights."""
+"""Jorja Clipper - Cross-platform desktop app for instant sports highlight extraction."""
 
 __version__ = "0.1.0"

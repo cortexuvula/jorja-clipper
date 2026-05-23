@@ -1,47 +1,43 @@
-# 🏀 Jorja Clipper
+# Jorja Clipper
 
-One-key video clipper for sports highlights.
+Cross-platform desktop application for instant sports highlight extraction.
 
-Watch a game video. Press **C** when something awesome happens. Get a clip saved instantly — no re-encoding, no waiting.
+## 🎯 Overview
 
-## Features
+Jorja Clipper lets you play a video and save a clip (with configurable pre/post-event buffers) with a single keystroke — without re-encoding.
 
-- Play any video format (mpv backend)
-- Press **C** to save a ±5 second clip (configurable)
-- Instant save via ffmpeg stream-copy (no re-encoding)
-- Clip list sidebar to review and play saved clips
-- Cross-platform: Linux, macOS, Windows
+## 🚀 Features
 
-## Install
+- Instant clip saving with configurable buffers
+- Keyboard-driven playback control
+- No re-encoding (fast `ffmpeg` stream-copy)
+- Cross-platform: Linux, Windows, macOS
 
-```bash
-pip install .
-```
-
-## Usage
-
-```bash
-jorja-clipper path/to/game-video.mp4
-```
-
-### Keyboard Shortcuts
+## ⌨️ Keyboard Shortcuts
 
 | Key | Action |
-|-----|--------|
-| Space | Play / Pause |
-| Left / Right | Seek ±5s |
-| Shift+Left / Shift+Right | Seek ±1s |
-| C | Save clip (±5s around current position) |
-| O | Open file |
-| Q | Quit |
+| :--- | :--- |
+| **Space** | Play / Pause |
+| **Left / Right** | Seek ±5s |
+| **Shift + Left/Right** | Seek ±1s |
+| **C** | Save clip |
+| **O** | Open file |
+| **Q** | Quit |
 
-## Build from Source
+## 🛠 Development
+
+Install in editable mode with dev dependencies:
 
 ```bash
-pip install -e ".[dev]"
+pip install -e '.[dev]'
+```
+
+Run tests:
+
+```bash
 pytest
 ```
 
-## License
+## ⚖️ License
 
-MIT
+MIT License

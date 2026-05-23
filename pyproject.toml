@@ -4,35 +4,66 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jorja-clipper"
-version = "0.1.0"
-description = "One-key video clipper for sports highlights"
+dynamic = ["version"]
+description = "Cross-platform desktop app for instant sports highlight extraction."
 readme = "README.md"
-license = "MIT"
-requires-python = ">=3.10"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Turing"},
+]
+keywords = [
+    "video", "clip", "highlight", "sports", "ffmpeg", "mpv",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Video",
+]
 dependencies = [
     "PySide6>=6.6",
-    "python-mpv>=0.5.2",
+    "python-mpv>=1.0.1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
-    "pytest-qt>=4.0",
-    "ruff>=0.4",
+    "pytest-qt>=4.2",
+    "ruff>=0.1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/cortexuvula/jorja-clipper"
+Repository = "https://github.com/cortexuvula/jorja-clipper"
+Issues = "https://github.com/cortexuvula/jorja-clipper/issues"
+
 [project.scripts]
-jorja-clipper = "jorja_clipper.app:main"
+jorja-clipper = "jorja_clipper.main:main"
+
+[tool.hatch.version]
+path = "src/jorja_clipper/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/jorja_clipper"]
 
-[tool.ruff]
-line-length = 100
-target-version = "py310"
-
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]
+ignore = ["D100", "D104", "D203", "D212"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+qt_api = "pyside6"
+addopts = "-v"
