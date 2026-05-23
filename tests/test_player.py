@@ -43,7 +43,7 @@ def test_player_noop_when_mpv_none():
     p = Player()
     p._mpv = None
     p.toggle_pause()  # should not raise
-    p.seek(5.0)       # should not raise
+    p.seek(5.0)  # should not raise
 
 
 def test_player_init_with_wid():
@@ -63,6 +63,7 @@ def test_player_load_lazily_creates_mpv(mock_mpv):
     p.init_with_wid(7)
     import tempfile
     from pathlib import Path
+
     with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
         path = Path(f.name)
     p.load(path)

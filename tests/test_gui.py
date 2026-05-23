@@ -1,12 +1,19 @@
 """Tests for GUI components."""
 
+import os
+import sys
 from unittest.mock import MagicMock
 
-from PySide6.QtWidgets import QWidget
+import pytest
 
 from jorja_clipper.gui.clip_list import ClipListModel
-from jorja_clipper.gui.settings_dialog import SettingsDialog
-from jorja_clipper.settings import Settings
+
+# Skip widget-creating tests on headless Linux CI (xvfb can crash with
+# certain Qt widgets like QKeySequenceEdit).
+_needs_display = pytest.mark.skipif(
+    sys.platform == "linux" and not os.environ.get("DISPLAY"),
+    reason="No display available (headless Linux CI)",
+)
 
 
 def test_clip_list_model_empty():
@@ -41,8 +48,12 @@ def test_clip_list_model_clip_at():
     assert model.clip_at(99) is None
 
 
+@_needs_display
 def test_settings_dialog_reads_settings(qtbot):
     """SettingsDialog populates fields from the passed Settings."""
+    from jorja_clipper.gui.settings_dialog import SettingsDialog
+    from jorja_clipper.settings import Settings
+
     settings = Settings(config_path=None)
     settings.buffer_before = 12.0
     settings.buffer_after = 3.0
@@ -54,8 +65,11 @@ def test_settings_dialog_reads_settings(qtbot):
     assert dialog._key_clip.keySequence().toString() == "X"
 
 
+@_needs_display
 def test_video_widget_init(qtbot):
     """VideoWidget stores player reference."""
+    from PySide6.QtWidgets import QWidget
+
     from jorja_clipper.gui.video_widget import VideoWidget
 
     player = MagicMock()
