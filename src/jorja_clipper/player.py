@@ -8,6 +8,8 @@ from typing import Any
 
 import mpv
 
+__all__ = ["Player"]
+
 
 class Player:
     """Wraps mpv for video playback with clean interface."""

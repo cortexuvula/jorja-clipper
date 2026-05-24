@@ -23,6 +23,8 @@ from jorja_clipper.settings import Settings
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["main", "_setup_logging"]
+
 
 def _setup_logging() -> None:
     """Configure root logger with stderr and rotating file handlers."""

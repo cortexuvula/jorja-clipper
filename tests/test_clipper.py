@@ -101,3 +101,70 @@ def test_clipper_save_handles_ffmpeg_not_found(mock_run):
     )
     assert result.success is False
     assert "ffmpeg" in result.error.lower() or "no such file" in result.error.lower()
+
+
+# ---------------------------------------------------------------------------
+# Property-based tests (hypothesis)
+# ---------------------------------------------------------------------------
+
+from hypothesis import given, strategies as st  # noqa: E402
+
+
+@given(
+    current_pos=st.floats(min_value=0.0, max_value=1e6),
+    video_duration=st.floats(min_value=0.0, max_value=1e6),
+    buffer_before=st.floats(min_value=0.0, max_value=1e6),
+    buffer_after=st.floats(min_value=0.0, max_value=1e6),
+)
+def test_calculate_times_clamps_inbounds(
+    current_pos, video_duration, buffer_before, buffer_after
+):
+    """Start is always >= 0, end is always <= duration.
+
+    When current_pos lies *inside* the video, start <= end.
+    When current_pos > duration, start may exceed duration — this is an invalid
+    playback position that ``save_clip`` guards against via ``end <= start``.
+    """
+    c = Clipper(buffer_before=buffer_before, buffer_after=buffer_after)
+    start, end = c.calculate_times(current_pos, video_duration)
+    assert start >= 0.0
+    assert end <= video_duration or video_duration == 0.0
+    if current_pos <= video_duration:
+        assert start <= end or video_duration == 0.0
+
+
+@given(
+    current_pos=st.floats(min_value=-1e6, max_value=1e6),
+    video_duration=st.floats(min_value=-1e6, max_value=1e6),
+)
+def test_calculate_times_never_raises(current_pos, video_duration):
+    """calculate_times is total — it never throws for any float inputs."""
+    c = Clipper()
+    try:
+        start, end = c.calculate_times(current_pos, video_duration)
+        assert isinstance(start, float)
+        assert isinstance(end, float)
+    except Exception:
+        assert False, "calculate_times should not raise"
+
+
+@given(
+    current_pos=st.floats(min_value=0.0, max_value=1e3),
+    buffer_before=st.floats(min_value=1e3, max_value=1e6),
+)
+def test_buffer_larger_than_video_clamps_start_to_zero(current_pos, buffer_before):
+    """When buffer_before exceeds current_pos, start clamps to 0."""
+    c = Clipper(buffer_before=buffer_before, buffer_after=1.0)
+    start, _ = c.calculate_times(current_pos, video_duration=current_pos + 2.0)
+    assert start == 0.0
+
+
+@given(
+    current_pos=st.floats(min_value=0.0, max_value=1e3),
+    buffer_after=st.floats(min_value=1e3, max_value=1e6),
+)
+def test_buffer_larger_than_video_clamps_end_to_duration(current_pos, buffer_after):
+    """When buffer_after exceeds remaining duration, end clamps to duration."""
+    c = Clipper(buffer_before=1.0, buffer_after=buffer_after)
+    _, end = c.calculate_times(current_pos, video_duration=current_pos + 2.0)
+    assert end == current_pos + 2.0

@@ -38,6 +38,35 @@ Run tests:
 pytest
 ```
 
+## 🖼 Demo
+
+> A demo GIF or screenshot will be added here before the next release.
+> To generate one, record a short clip workflow and place the file in
+> `docs/assets/demo.gif`, then update the line below.
+>
+> `![Jorja Clipper Demo](docs/assets/demo.gif)`
+
+### UI Layout (ASCII Mockup)
+
+```
++-------------------------------------------------------------+
+|  Jorja Clipper — game.mp4                                   |
++-------------------------------------------------------------+
+|                                                             |
+|  +-------------------------+   +------------------------+  |
+|  |                         |   | Saved Clips            |  |
+|  |    Video Player Area    |   | ---------------------- |  |
+|  |    (mpv renders here)   |   | game_clip_... [25-35s] |  |
+|  |                         |   | game_clip_... [45-55s] |  |
+|  |                         |   |                        |  |
+|  +-------------------------+   +------------------------+  |
+|                                                             |
+|  [Open (O)] [Play/Pause (Space)] [Clip (C)] [Settings] [Undo (U)]
+|                                                             |
+|  Loaded: game.mp4                                           |
++-------------------------------------------------------------+
+```
+
 ## ⚖️ License
 
 MIT License

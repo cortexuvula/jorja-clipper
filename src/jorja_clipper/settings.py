@@ -3,6 +3,8 @@
 import json
 from pathlib import Path
 
+__all__ = ["Settings"]
+
 
 class Settings:
     """Manages application configuration."""

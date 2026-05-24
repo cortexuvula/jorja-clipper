@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+__all__ = ["StoredClip", "ClipStore"]
+
 
 @dataclass
 class StoredClip:

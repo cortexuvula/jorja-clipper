@@ -24,6 +24,8 @@ from jorja_clipper.settings import Settings
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["SettingsDialog"]
+
 
 class SettingsDialog(QDialog):
     """Dialog to edit application settings."""

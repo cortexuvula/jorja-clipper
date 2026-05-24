@@ -6,6 +6,8 @@ from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
+__all__ = ["ClipEntry", "ClipListModel"]
+
 
 @dataclass
 class ClipEntry:

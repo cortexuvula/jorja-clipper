@@ -6,6 +6,8 @@ from PySide6.QtCore import QObject, QThread, Signal
 
 from jorja_clipper.clipper import Clipper
 
+__all__ = ["ClipWorker"]
+
 
 class ClipWorker(QThread):
     """Runs clip extraction in a background thread so the Qt UI stays responsive."""

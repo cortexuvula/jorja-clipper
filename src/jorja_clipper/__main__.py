@@ -2,4 +2,6 @@
 
 from jorja_clipper.app import main
 
+__all__ = ["main"]
+
 main()

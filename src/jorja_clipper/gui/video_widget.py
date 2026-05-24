@@ -10,6 +10,8 @@ from PySide6.QtWidgets import QWidget
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["VideoWidget"]
+
 
 class VideoWidget(QWidget):
     """A native widget that provides its window handle to mpv."""

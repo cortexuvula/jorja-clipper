@@ -12,6 +12,8 @@ from jorja_clipper.worker import ClipWorker
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["ClipController"]
+
 
 class ClipController:
     """Orchestrates clip workflow, player state, and settings."""

@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
 from jorja_clipper.controller import ClipController
 from jorja_clipper.worker import ClipWorker
 
+__all__ = ["MainWindow"]
+
 
 class MainWindow(QMainWindow):
     """Main Jorja Clipper window."""

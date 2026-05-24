@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+__all__ = ["ClipResult", "Clipper"]
+
 
 @dataclass
 class ClipResult:
