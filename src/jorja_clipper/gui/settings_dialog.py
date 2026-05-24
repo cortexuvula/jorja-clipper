@@ -5,6 +5,7 @@ import logging
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from jorja_clipper.gui.theme import THEMES
 from jorja_clipper.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -56,6 +58,15 @@ class SettingsDialog(QDialog):
         self._key_clip = QKeySequenceEdit()
         self._key_clip.setKeySequence(QKeySequence(self._settings.clip_key))
         form.addRow("Clip key:", self._key_clip)
+
+        # Theme selector
+        self._theme_combo = QComboBox()
+        for name in THEMES:
+            self._theme_combo.addItem(name.capitalize(), name)
+        idx = self._theme_combo.findData(self._settings.theme)
+        if idx >= 0:
+            self._theme_combo.setCurrentIndex(idx)
+        form.addRow("Theme:", self._theme_combo)
 
         # Output directory
         self._output_dir = QLineEdit()
@@ -97,6 +108,7 @@ class SettingsDialog(QDialog):
         self._settings.buffer_after = self._spin_after.value()
         self._settings.clip_key = key.split(",")[0].strip()
         self._settings.output_dir = self._output_dir.text().strip()
+        self._settings.theme = self._theme_combo.currentData()
         try:
             self._settings.save()
         except RuntimeError as exc:

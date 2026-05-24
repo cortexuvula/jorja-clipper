@@ -28,6 +28,7 @@ class PydanticSettings(BaseModel):
     buffer_after: float = Field(default=5.0, ge=0.0, le=60.0)
     clip_key: str = Field(default="C", min_length=1, max_length=1)
     output_dir: str = Field(default="", max_length=4096)
+    theme: str = Field(default="dark", max_length=20)
 
     @field_validator("config_path", mode="before")
     @classmethod
@@ -48,6 +49,7 @@ class PydanticSettings(BaseModel):
             "buffer_after": self.buffer_after,
             "clip_key": self.clip_key,
             "output_dir": self.output_dir,
+            "theme": self.theme,
         }
         path.write_text(json.dumps(data, indent=2))
 
@@ -61,7 +63,7 @@ class PydanticSettings(BaseModel):
         except (json.JSONDecodeError, OSError):
             return
         # Use pydantic validation while updating fields individually
-        for key in ("buffer_before", "buffer_after", "clip_key", "output_dir"):
+        for key in ("buffer_before", "buffer_after", "clip_key", "output_dir", "theme"):
             if key in raw:
                 setattr(self, key, raw[key])
 

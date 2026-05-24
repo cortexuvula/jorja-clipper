@@ -8,6 +8,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QShowEvent
 from PySide6.QtWidgets import QWidget
 
+from jorja_clipper.gui.theme import ThemeManager
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["VideoWidget"]
@@ -16,12 +18,13 @@ __all__ = ["VideoWidget"]
 class VideoWidget(QWidget):
     """A native widget that provides its window handle to mpv."""
 
-    def __init__(self, player: Any, parent: QWidget | None = None) -> None:
+    def __init__(self, player: Any, theme_manager: ThemeManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._player = player
+        self._theme_manager = theme_manager
         self._mpv_initialized = False
         self.setMinimumSize(800, 500)
-        self.setStyleSheet("background-color: #1a1a2e;")
+        self.setStyleSheet(f"background-color: {theme_manager.theme.video_bg};")
 
     def showEvent(self, event: QShowEvent) -> None:
         """Called when the widget is first shown; bind mpv here."""

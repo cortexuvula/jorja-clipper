@@ -18,7 +18,9 @@ from jorja_clipper.clipper import Clipper
 from jorja_clipper.controller import ClipController
 from jorja_clipper.gui.clip_list import ClipListModel
 from jorja_clipper.gui.main_window import MainWindow
+from jorja_clipper.gui.theme import ThemeManager
 from jorja_clipper.player import Player
+from jorja_clipper.plugins import PluginLoader
 from jorja_clipper.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -69,14 +71,22 @@ def main() -> None:
     settings.load()
     logger.debug("Settings loaded from %s", settings.config_path)
 
+    # Load plugins early so they are ready before any clips fire
+    plugin_loader = PluginLoader()
+    loaded = plugin_loader.scan()
+    logger.info("Plugins loaded: %d", len(loaded))
+
     player = Player()
     clipper = Clipper(
         buffer_before=settings.buffer_before,
         buffer_after=settings.buffer_after,
     )
     clip_model = ClipListModel()
-    controller = ClipController(player, clipper, settings, clip_model)
-    window = MainWindow(controller)
+    theme_manager = ThemeManager(theme_name=settings.theme)
+    controller = ClipController(
+        player, clipper, settings, clip_model, plugin_loader=plugin_loader
+    )
+    window = MainWindow(controller, theme_manager)
     window.show()
 
     # If a video file was passed as argument, load it

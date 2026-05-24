@@ -3,10 +3,12 @@
 import logging
 from pathlib import Path
 
+from jorja_clipper.batch_queue import BatchWorker, ClipQueue, ClipRequest
 from jorja_clipper.clipper import Clipper, ClipResult
 from jorja_clipper.clip_store import ClipStore, StoredClip
 from jorja_clipper.gui.clip_list import ClipListModel
 from jorja_clipper.player import Player
+from jorja_clipper.plugins import PluginLoader
 from jorja_clipper.settings import Settings
 from jorja_clipper.worker import ClipWorker
 
@@ -25,17 +27,23 @@ class ClipController:
         settings: Settings,
         clip_model: ClipListModel,
         clip_store: ClipStore | None = None,
+        plugin_loader: PluginLoader | None = None,
     ) -> None:
         self._player = player
         self._clipper = clipper
         self._settings = settings
         self._clip_model = clip_model
         self._clip_store = clip_store or ClipStore()
+        self._plugin_loader = plugin_loader or PluginLoader()
         self._current_video: Path | None = None
         self._clip_count = 0
         self._active_worker: ClipWorker | None = None
         self._last_undo_info: tuple[StoredClip, float] | None = None
         """(stored_clip, video_position_at_undo) so we can restore position on undo."""
+
+        # Batch queue
+        self._batch_queue = ClipQueue()
+        self._batch_worker: BatchWorker | None = None
 
     # ------------------------------------------------------------------
     # Properties delegated to underlying components
@@ -64,6 +72,18 @@ class ClipController:
     @property
     def is_clipping(self) -> bool:
         return self._active_worker is not None and self._active_worker.isRunning()
+
+    @property
+    def batch_queue(self) -> ClipQueue:
+        return self._batch_queue
+
+    @property
+    def is_batch_running(self) -> bool:
+        return self._batch_worker is not None and self._batch_worker.isRunning()
+
+    @property
+    def plugin_loader(self) -> PluginLoader:
+        return self._plugin_loader
 
     # ------------------------------------------------------------------
     # File / Player operations
@@ -104,7 +124,7 @@ class ClipController:
         self._player.shutdown()
 
     # ------------------------------------------------------------------
-    # Clip workflow (async)
+    # Single clip workflow (async)
     # ------------------------------------------------------------------
 
     def save_clip(self) -> ClipWorker | ClipResult:
@@ -141,6 +161,11 @@ class ClipController:
             self._current_video.name,
         )
 
+        start, end = self._clipper.calculate_times(
+            self._player.current_pos, self._player.duration
+        )
+        self._plugin_loader.broadcast_clip_start(self._current_video, start, end)
+
         worker = ClipWorker(
             clipper=self._clipper,
             video_path=self._current_video,
@@ -157,6 +182,7 @@ class ClipController:
     def _on_clip_finished(self, result: ClipResult) -> None:
         """Handle completion of a clip worker thread."""
         if result.success:
+            self._plugin_loader.broadcast_clip_complete(result)
             self._clip_count += 1
             self._clip_model.add_clip(result.path, result.start_time, result.end_time)
             if self._current_video is not None:
@@ -171,11 +197,116 @@ class ClipController:
                     self._last_undo_info = (stored, result.start_time)
             logger.info("Clip saved: %s", result.path)
         else:
+            self._plugin_loader.broadcast_clip_error(result)
             logger.error("Clip failed: %s", result.error)
 
         if self._active_worker is not None:
             self._active_worker.deleteLater()
             self._active_worker = None
+
+    # ------------------------------------------------------------------
+    # Batch clip queue
+    # ------------------------------------------------------------------
+
+    def queue_clip(self) -> ClipResult | None:
+        """Add a clip request to the batch queue without processing it yet.
+
+        Returns ``None`` on success, or a :class:`ClipResult` with
+        ``success=False`` if there is no current video.
+        """
+        if self._current_video is None:
+            return ClipResult(
+                path="",
+                start_time=0.0,
+                end_time=0.0,
+                success=False,
+                error="No video loaded",
+            )
+        self._clip_count += 1
+        request = ClipRequest(
+            video_path=self._current_video,
+            current_pos=self._player.current_pos,
+            video_duration=self._player.duration,
+            clip_number=self._clip_count,
+        )
+        self._batch_queue.enqueue(request)
+        logger.info(
+            "Queued clip %d at %.1fs (queue size=%d)",
+            request.clip_number,
+            request.current_pos,
+            len(self._batch_queue),
+        )
+        return None
+
+    def process_batch(self) -> BatchWorker | ClipResult:
+        """Start a :class:`BatchWorker` that drains the current queue.
+
+        Returns the started ``BatchWorker`` so callers can connect to
+        its ``progress`` and ``finished`` signals, **or** a
+        :class:`ClipResult` with ``success=False`` if the queue is empty
+        or a batch is already running.
+        """
+        if self.is_batch_running:
+            return ClipResult(
+                path="",
+                start_time=0.0,
+                end_time=0.0,
+                success=False,
+                error="Batch already in progress",
+            )
+        if len(self._batch_queue) == 0:
+            return ClipResult(
+                path="",
+                start_time=0.0,
+                end_time=0.0,
+                success=False,
+                error="Batch queue is empty",
+            )
+
+        worker = BatchWorker(
+            clipper=self._clipper,
+            queue=self._batch_queue,
+            parent=None,
+        )
+        worker.progress.connect(self._on_batch_progress)
+        worker.finished.connect(self._on_batch_finished)
+        self._batch_worker = worker
+        worker.start()
+        return worker
+
+    def _on_batch_progress(self, completed: int, total: int, result: ClipResult) -> None:
+        """Handle a single item finishing inside a batch run."""
+        if result.success:
+            self._clip_model.add_clip(result.path, result.start_time, result.end_time)
+            if self._current_video is not None:
+                self._clip_store.add_clip(
+                    clip_path=result.path,
+                    source_video_path=str(self._current_video),
+                    start_time=result.start_time,
+                    end_time=result.end_time,
+                )
+            self._plugin_loader.broadcast_clip_complete(result)
+            logger.info("Batch progress %d/%d — saved %s", completed, total, result.path)
+        else:
+            self._plugin_loader.broadcast_clip_error(result)
+            logger.error("Batch progress %d/%d — failed: %s", completed, total, result.error)
+
+    def _on_batch_finished(self, results: list[ClipResult]) -> None:
+        """Handle completion of the entire batch queue."""
+        success_count = sum(1 for r in results if r.success)
+        logger.info("Batch finished: %d/%d succeeded", success_count, len(results))
+        if self._batch_worker is not None:
+            self._batch_worker.deleteLater()
+            self._batch_worker = None
+
+    def clear_batch_queue(self) -> None:
+        """Remove all pending requests from the batch queue."""
+        self._batch_queue.clear()
+        logger.info("Batch queue cleared")
+
+    # ------------------------------------------------------------------
+    # Undo
+    # ------------------------------------------------------------------
 
     def undo_last_clip(self) -> bool:
         """Undo the most recent clip: delete file, DB entry, model row, and restore position.

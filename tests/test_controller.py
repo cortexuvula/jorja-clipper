@@ -72,6 +72,7 @@ def test_controller_save_clip_success():
     player.duration = 120.0
 
     clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
     model = ClipListModel()
     ctrl = ClipController(player, clipper, MagicMock(), model)
     ctrl._current_video = Path("/tmp/game.mp4")
@@ -101,6 +102,9 @@ def test_controller_save_clip_rejects_while_running():
 
     ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
     ctrl._current_video = Path("/tmp/game.mp4")
+
+    # pre-set calculate_times return value so save_clip doesn't break
+    ctrl._clipper.calculate_times.return_value = (25.0, 35.0)
 
     from jorja_clipper.worker import ClipWorker
 

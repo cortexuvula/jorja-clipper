@@ -16,6 +16,7 @@ class Settings:
         self.buffer_after: float = 5.0
         self.clip_key: str = "C"
         self.output_dir: str = ""  # empty = clips/ next to video
+        self.theme: str = "dark"
 
     def save(self) -> None:
         """Save settings to JSON file."""
@@ -25,6 +26,7 @@ class Settings:
             "buffer_after": self.buffer_after,
             "clip_key": self.clip_key,
             "output_dir": self.output_dir,
+            "theme": self.theme,
         }
         try:
             self.config_path.write_text(json.dumps(data, indent=2))
@@ -41,6 +43,7 @@ class Settings:
             self.buffer_after = float(data.get("buffer_after", self.buffer_after))
             self.clip_key = data.get("clip_key", self.clip_key)
             self.output_dir = data.get("output_dir", self.output_dir)
+            self.theme = data.get("theme", self.theme)
             if self.buffer_before < 0 or self.buffer_after < 0:
                 raise ValueError("negative buffer")
         except (json.JSONDecodeError, KeyError, UnicodeDecodeError, OSError):

@@ -89,10 +89,12 @@ def test_video_widget_init(qtbot):
     from PySide6.QtWidgets import QWidget
 
     from jorja_clipper.gui.video_widget import VideoWidget
+    from jorja_clipper.gui.theme import ThemeManager
 
     player = MagicMock()
+    theme_manager = ThemeManager()
     parent = QWidget()
     qtbot.addWidget(parent)
-    widget = VideoWidget(player, parent=parent)
+    widget = VideoWidget(player, theme_manager, parent=parent)
     assert widget._player is player
     assert widget._mpv_initialized is False
