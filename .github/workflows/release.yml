@@ -1,11 +1,8 @@
-name: CI
+name: Release
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
 
 jobs:
   test:
@@ -31,13 +28,11 @@ jobs:
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install mpv ffmpeg
+        run: brew install mpv ffmpeg
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install ffmpeg mpv
+        run: choco install ffmpeg mpv
 
       - name: Install Python dependencies
         run: |
@@ -84,13 +79,11 @@ jobs:
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
-        run: |
-          brew install mpv ffmpeg
+        run: brew install mpv ffmpeg
 
       - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install ffmpeg mpv
+        run: choco install ffmpeg mpv
 
       - name: Install Python dependencies
         run: |
@@ -98,98 +91,100 @@ jobs:
           pip install -e '.[dev]'
 
       - name: Build with PyInstaller
-        run: |
-          pyinstaller --clean ${{ matrix.spec_file }}
+        run: pyinstaller --clean ${{ matrix.spec_file }}
 
-      # ------------------------------------------------------------------
-      # macOS code-signing + notarization + DMG
-      # Required GitHub secrets (repo > Settings > Secrets):
-      #   MACOS_CERTIFICATE          – base64-encoded .p12
-      #   MACOS_CERTIFICATE_PASSWORD – .p12 password
-      #   MACOS_CERTIFICATE_NAME     – e.g. "Developer ID Application: Name (TEAMID)"
-      #   APPLE_ID                   – Apple ID email
-      #   APPLE_APP_SPECIFIC_PASSWORD– App-specific password for notarytool
-      #   APPLE_TEAM_ID              – 10-character Apple Team ID
-      # ------------------------------------------------------------------
-      - name: Import signing certificate
+      # ---------------------------------------------------------------
+      # macOS code-signing + notarization
+      # Secrets: https://github.com/cortexuvula/jorja-clipper/settings/secrets/actions
+      # Guide:   Obsidian → RSVP Reader - macOS Signing Credentials
+      # ---------------------------------------------------------------
+
+      - name: "[macOS] Import signing certificate"
         if: runner.os == 'macOS'
         env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
         run: |
-          if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "No MACOS_CERTIFICATE secret found; skipping signing."
+          if [ -z "$CERT_BASE64" ]; then
+            echo "::warning::No MACOS_CERTIFICATE_P12_BASE64 secret; skipping signing."
             exit 0
           fi
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          echo "$MACOS_CERTIFICATE" | base64 --decode > certificate.p12
-          security import certificate.p12 -k build.keychain -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security find-identity -v -p codesigning build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          # Decode and import .p12
+          echo "$CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -k build.keychain -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" build.keychain
+          # Add to search list
+          security list-keychains -d user -s build.keychain login.keychain
+          rm -f "$RUNNER_TEMP/certificate.p12"
 
-      - name: Code-sign macOS app
+      - name: "[macOS] Code-sign .app bundle"
         if: runner.os == 'macOS'
         env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_NAME: ${{ secrets.MACOS_CERTIFICATE_NAME }}
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
-          if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "No signing certificate available; skipping codesign."
+          if [ -z "$CERT_BASE64" ]; then
+            echo "::warning::No signing certificate; skipping codesign."
             exit 0
           fi
-          # Sign embedded Mach-O binaries first
-          find "dist/Jorja Clipper.app" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
-            codesign --sign "$MACOS_CERTIFICATE_NAME" --timestamp --force --options runtime {} \;
-          # Sign the launcher binary if present outside the bundle
-          if [ -f "dist/jorja-clipper" ]; then
-            codesign --sign "$MACOS_CERTIFICATE_NAME" --timestamp --force --options runtime "dist/jorja-clipper"
-          fi
-          # Deep-sign the .app bundle with hardened runtime
-          codesign --deep --force --verify --verbose --sign "$MACOS_CERTIFICATE_NAME" \
-            --timestamp --options runtime --entitlements packaging/macos.entitlements.plist \
-            "dist/Jorja Clipper.app"
+          APP="dist/Jorja Clipper.app"
+          # Sign embedded dylibs/so files first
+          find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
+            codesign --sign "$IDENTITY" --timestamp --force --options runtime {} \;
+          # Deep-sign the bundle with hardened runtime + entitlements
+          codesign --deep --force --verify --verbose=2 \
+            --sign "$IDENTITY" --timestamp --options runtime \
+            --entitlements packaging/macos.entitlements.plist \
+            "$APP"
+          echo "Signed. Verifying..."
+          codesign --verify --deep --strict --verbose=2 "$APP"
 
-      - name: Zip macOS app for notarization
+      - name: "[macOS] Zip for notarization"
         if: runner.os == 'macOS'
+        env:
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
         run: |
+          if [ -z "$CERT_BASE64" ]; then exit 0; fi
           ditto -c -k --sequesterRsrc --keepParent \
             "dist/Jorja Clipper.app" \
             "dist/jorja-clipper-notarize.zip"
 
-      - name: Notarize macOS app
+      - name: "[macOS] Notarize with Apple"
         if: runner.os == 'macOS'
         env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
         run: |
-          if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "No signing certificate available; skipping notarization."
+          if [ -z "$CERT_BASE64" ]; then
+            echo "::warning::No signing certificate; skipping notarization."
             exit 0
           fi
           xcrun notarytool submit "dist/jorja-clipper-notarize.zip" \
             --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
+            --password "$PASSWORD" \
+            --team-id "$TEAM_ID" \
             --wait
+          rm -f dist/jorja-clipper-notarize.zip
 
-      - name: Staple notarization ticket
+      - name: "[macOS] Staple notarization ticket"
         if: runner.os == 'macOS'
         env:
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
         run: |
-          if [ -z "$MACOS_CERTIFICATE" ]; then
-            echo "No signing certificate available; skipping stapling."
-            exit 0
-          fi
+          if [ -z "$CERT_BASE64" ]; then exit 0; fi
           xcrun stapler staple "dist/Jorja Clipper.app"
-          codesign --verify --deep --strict --verbose=2 "dist/Jorja Clipper.app"
 
-      - name: Build DMG
+      - name: "[macOS] Build DMG"
         if: runner.os == 'macOS'
         run: |
           brew install create-dmg
@@ -200,9 +195,9 @@ jobs:
             --icon-size 100 \
             --app-drop-link 600 185 \
             "dist/Jorja Clipper.dmg" \
-            "dist/Jorja Clipper.app"
+            "dist/Jorja Clipper.app" || true
 
-      - name: Zip macOS app bundle
+      - name: "[macOS] Zip app bundle"
         if: runner.os == 'macOS'
         run: |
           cd dist
@@ -220,8 +215,75 @@ jobs:
             dist/Jorja Clipper.dmg
           if-no-files-found: warn
 
-  release:
+  build-deb:
     needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: jorja-clipper-linux
+          path: dist
+
+      - name: Extract version
+        id: version
+        run: |
+          VERSION=$(grep -oP '__version__\s*=\s*"\K[^"]+' src/jorja_clipper/__init__.py)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build .deb package
+        run: |
+          mkdir -p deb-root/DEBIAN
+          mkdir -p deb-root/opt/jorja-clipper
+          mkdir -p deb-root/usr/bin
+          mkdir -p deb-root/usr/share/applications
+          cp dist/jorja-clipper deb-root/opt/jorja-clipper/
+          chmod 755 deb-root/opt/jorja-clipper/jorja-clipper
+          ln -sf /opt/jorja-clipper/jorja-clipper deb-root/usr/bin/jorja-clipper
+          cat > deb-root/usr/share/applications/jorja-clipper.desktop << 'EOF'
+          [Desktop Entry]
+          Name=Jorja Clipper
+          Comment=Video highlight clipper for sports games
+          Exec=/opt/jorja-clipper/jorja-clipper %f
+          Icon=video-x-generic
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Video;
+          MimeType=video/mp4;video/x-matroska;video/avi;
+          EOF
+          cat > deb-root/DEBIAN/control << EOF
+          Package: jorja-clipper
+          Version: ${{ steps.version.outputs.version }}
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Depends: mpv, ffmpeg
+          Maintainer: cortexuvula <devlead@andrehugo.ca>
+          Description: Video highlight clipper for sports games
+           Press a hotkey during video playback to save a lossless clip
+           of the surrounding seconds. Designed for clipping basketball
+           game highlights in real time.
+          EOF
+          cat > deb-root/DEBIAN/postinst << 'POSTINST'
+          #!/bin/sh
+          set -e
+          if command -v update-desktop-database > /dev/null 2>&1; then
+            update-desktop-database /usr/share/applications || true
+          fi
+          POSTINST
+          chmod 755 deb-root/DEBIAN/postinst
+          dpkg-deb --build deb-root jorja-clipper-${{ steps.version.outputs.version }}-amd64.deb
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jorja-clipper-deb
+          path: "*.deb"
+
+  release:
+    needs: [build, build-deb]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -239,3 +301,4 @@ jobs:
             artifacts/jorja-clipper-linux/*
             artifacts/jorja-clipper-macos/*
             artifacts/jorja-clipper-windows/*
+            artifacts/jorja-clipper-deb/*
