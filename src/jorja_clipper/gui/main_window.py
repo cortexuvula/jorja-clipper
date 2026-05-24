@@ -16,23 +16,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jorja_clipper.clipper import Clipper
-from jorja_clipper.gui.clip_list import ClipListModel
-from jorja_clipper.gui.settings_dialog import SettingsDialog
-from jorja_clipper.gui.video_widget import VideoWidget
-from jorja_clipper.settings import Settings
+from jorja_clipper.controller import ClipController
+from jorja_clipper.worker import ClipWorker
 
 
 class MainWindow(QMainWindow):
     """Main Jorja Clipper window."""
 
-    def __init__(self, player, clipper: Clipper, settings: Settings):
+    def __init__(self, controller: ClipController):
         super().__init__()
-        self._player = player
-        self._clipper = clipper
-        self._settings = settings
-        self._clip_count = 0
-        self._current_video = None
+        self._controller = controller
         self._shortcuts: list[QShortcut] = []
 
         self.setWindowTitle("Jorja Clipper")
@@ -41,8 +34,14 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_shortcuts()
 
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
     def _setup_ui(self):
         """Build the UI layout."""
+        from jorja_clipper.gui.video_widget import VideoWidget
+
         central = QWidget()
         self.setCentralWidget(central)
         layout = QHBoxLayout(central)
@@ -56,7 +55,7 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left)
 
         # Video widget (mpv renders here)
-        self._video_widget = VideoWidget(self._player, self)
+        self._video_widget = VideoWidget(self._controller.player, self)
         left_layout.addWidget(self._video_widget)
 
         # Status bar
@@ -69,11 +68,11 @@ class MainWindow(QMainWindow):
         controls = QHBoxLayout()
 
         self._btn_open = QPushButton("Open (O)")
-        self._btn_open.clicked.connect(self._open_file)
+        self._btn_open.clicked.connect(self._open_file_dialog)
         controls.addWidget(self._btn_open)
 
         self._btn_play = QPushButton("Play/Pause (Space)")
-        self._btn_play.clicked.connect(self._toggle_play)
+        self._btn_play.clicked.connect(self._controller.toggle_play)
         controls.addWidget(self._btn_play)
 
         self._btn_clip = QPushButton("Clip (C)")
@@ -81,8 +80,9 @@ class MainWindow(QMainWindow):
             "QPushButton { background-color: #e94560; color: white; "
             "font-weight: bold; padding: 10px; border-radius: 5px; }"
             "QPushButton:hover { background-color: #c73e54; }"
+            "QPushButton:disabled { background-color: #555; color: #aaa; }"
         )
-        self._btn_clip.clicked.connect(self._save_clip)
+        self._btn_clip.clicked.connect(self._on_clip_requested)
         controls.addWidget(self._btn_clip)
 
         self._btn_settings = QPushButton("Settings")
@@ -98,25 +98,44 @@ class MainWindow(QMainWindow):
 
         right_layout.addWidget(QLabel("Saved Clips"))
         self._clip_list = QListView()
-        self._clip_model = ClipListModel()
-        self._clip_list.setModel(self._clip_model)
+        self._clip_list.setModel(self._controller.clip_model)
         self._clip_list.doubleClicked.connect(self._preview_clip)
         right_layout.addWidget(self._clip_list)
 
         splitter.addWidget(right)
         splitter.setSizes([900, 300])
 
+    # ------------------------------------------------------------------
+    # Shortcuts
+    # ------------------------------------------------------------------
+
     def _setup_shortcuts(self):
         """Set up keyboard shortcuts."""
         self._shortcuts.clear()
-        self._shortcuts.append(QShortcut(QKeySequence(self._settings.clip_key), self, self._save_clip))
-        self._shortcuts.append(QShortcut(QKeySequence("Space"), self, self._toggle_play))
-        self._shortcuts.append(QShortcut(QKeySequence("O"), self, self._open_file))
-        self._shortcuts.append(QShortcut(QKeySequence("Left"), self, lambda: self._player.seek(-5.0)))
-        self._shortcuts.append(QShortcut(QKeySequence("Right"), self, lambda: self._player.seek(5.0)))
-        self._shortcuts.append(QShortcut(QKeySequence("Shift+Left"), self, lambda: self._player.seek(-1.0)))
-        self._shortcuts.append(QShortcut(QKeySequence("Shift+Right"), self, lambda: self._player.seek(1.0)))
-        self._shortcuts.append(QShortcut(QKeySequence("Q"), self, self.close))
+        self._shortcuts.append(
+            QShortcut(QKeySequence(self._controller.settings.clip_key), self, self._on_clip_requested)
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Space"), self, self._controller.toggle_play)
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("O"), self, self._open_file_dialog)
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Left"), self, lambda: self._controller.seek(-5.0))
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Right"), self, lambda: self._controller.seek(5.0))
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Shift+Left"), self, lambda: self._controller.seek(-1.0))
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Shift+Right"), self, lambda: self._controller.seek(1.0))
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("Q"), self, self.close)
+        )
 
     def update_shortcuts(self):
         """Recreate keyboard shortcuts after settings change."""
@@ -125,9 +144,13 @@ class MainWindow(QMainWindow):
             sc.deleteLater()
         self._shortcuts.clear()
         self._setup_shortcuts()
+
+    # ------------------------------------------------------------------
+    # Status / title helpers
+    # ------------------------------------------------------------------
+
     def load_video(self, video_path: Path) -> None:
-        """Load a video into the player and update UI."""
-        self._current_video = video_path
+        """Notify UI that a video is loaded."""
         self._status.setText(f"Loaded: {video_path.name}")
         self.setWindowTitle(f"Jorja Clipper — {video_path.name}")
 
@@ -135,7 +158,11 @@ class MainWindow(QMainWindow):
         """Update the status bar label."""
         self._status.setText(message)
 
-    def _open_file(self):
+    # ------------------------------------------------------------------
+    # Actions
+    # ------------------------------------------------------------------
+
+    def _open_file_dialog(self):
         """Open a video file dialog."""
         path, _ = QFileDialog.getOpenFileName(
             self,
@@ -144,60 +171,57 @@ class MainWindow(QMainWindow):
             "Video Files (*.mp4 *.mkv *.avi *.mov *.webm *.ts);;All Files (*)",
         )
         if path:
-            self._current_video = Path(path)
-            if self._player.load(self._current_video):
-                self._status.setText(f"Loaded: {self._current_video.name}")
-                self.setWindowTitle(f"Jorja Clipper — {self._current_video.name}")
+            video_path = Path(path)
+            if self._controller.open_file(video_path):
+                self.load_video(video_path)
             else:
-                self._status.setText(f"Failed to load: {self._current_video.name}")
+                self.set_status(f"Failed to load: {video_path.name}")
 
-    def _toggle_play(self):
-        """Toggle play/pause."""
-        self._player.toggle_pause()
-
-    def _save_clip(self):
-        """Save a clip at the current position."""
-        if self._current_video is None:
-            self._status.setText("No video loaded!")
+    def _on_clip_requested(self):
+        """Handle clip save request from button or shortcut."""
+        result = self._controller.save_clip()
+        if not isinstance(result, ClipWorker):
+            # Immediate rejection (no video loaded or already clipping)
+            self.set_status(f"Clip failed: {result.error[:80]}")
             return
 
-        result = self._clipper.save_clip(
-            video_path=self._current_video,
-            current_pos=self._player.current_pos,
-            video_duration=self._player.duration,
-            clip_number=self._clip_count + 1,
-        )
+        # Disable the clip button and show busy state
+        self._btn_clip.setEnabled(False)
+        self.set_status("Clipping…")
+        result.finished.connect(self._on_clip_finished)
 
+    def _on_clip_finished(self, result):
+        """Update UI after the background clip worker finishes."""
+        self._btn_clip.setEnabled(True)
         if result.success:
-            self._clip_count += 1
             name = Path(result.path).name
-            self._status.setText(f"Clip saved: {name}")
-            self._clip_model.add_clip(result.path, result.start_time, result.end_time)
+            self.set_status(f"Clip saved: {name}")
         else:
-            self._status.setText(f"Clip failed: {result.error[:80]}")
+            self.set_status(f"Clip failed: {result.error[:80]}")
 
     def _open_settings(self):
         """Open the settings dialog."""
-        dialog = SettingsDialog(self._settings, self)
+        from jorja_clipper.gui.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self._controller.settings, self)
         if dialog.exec() == SettingsDialog.DialogCode.Accepted:
-            # Propagate updated buffer values to clipper
-            self._clipper.buffer_before = self._settings.buffer_before
-            self._clipper.buffer_after = self._settings.buffer_after
+            self._controller.apply_settings()
             self.update_shortcuts()
-            self._status.setText(
-                f"Settings saved: before={self._settings.buffer_before}s, "
-                f"after={self._settings.buffer_after}s, key={self._settings.clip_key}"
+            self.set_status(
+                f"Settings saved: before={self._controller.settings.buffer_before}s, "
+                f"after={self._controller.settings.buffer_after}s, "
+                f"key={self._controller.settings.clip_key}"
             )
 
     def _preview_clip(self, index):
         """Open the clip with the system default player on double-click."""
-        clip = self._clip_model.clip_at(index.row())
+        clip = self._controller.clip_model.clip_at(index.row())
         if clip is not None and Path(clip.path).exists():
             QDesktopServices.openUrl(QUrl.fromLocalFile(str(clip.path)))
         else:
-            self._status.setText("Clip file not found.")
+            self.set_status("Clip file not found.")
 
     def closeEvent(self, event):
         """Shut down the player on window close."""
-        self._player.shutdown()
+        self._controller.shutdown()
         event.accept()

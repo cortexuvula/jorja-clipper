@@ -1,6 +1,8 @@
 """Main application entry point."""
 
 import locale
+import logging
+import logging.handlers
 import sys
 from pathlib import Path
 
@@ -14,36 +16,78 @@ if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
 from PySide6.QtWidgets import QApplication
 
 from jorja_clipper.clipper import Clipper
+from jorja_clipper.controller import ClipController
+from jorja_clipper.gui.clip_list import ClipListModel
 from jorja_clipper.gui.main_window import MainWindow
 from jorja_clipper.player import Player
 from jorja_clipper.settings import Settings
 
+logger = logging.getLogger(__name__)
+
+
+def _setup_logging() -> None:
+    """Configure root logger with stderr and rotating file handlers."""
+    log_dir = Path.home() / ".config" / "jorja-clipper"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "jorja-clipper.log"
+
+    formatter = logging.Formatter(
+        "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stderr)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+
+    # Rotating file handler (max 1 MB, keep 3 backups)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=1_048_576, backupCount=3, encoding="utf-8"
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(console_handler)
+    root.addHandler(file_handler)
+
+    logger.info("Logging configured — file: %s", log_file)
+
 
 def main():
     """Launch Jorja Clipper."""
+    _setup_logging()
+    logger.info("Jorja Clipper starting")
+
     video_args = [a for a in sys.argv[1:] if not a.startswith("-")]
     app = QApplication(sys.argv)
 
     settings = Settings()
     settings.load()
+    logger.debug("Settings loaded from %s", settings.config_path)
 
     player = Player()
     clipper = Clipper(
         buffer_before=settings.buffer_before,
         buffer_after=settings.buffer_after,
     )
-    window = MainWindow(player, clipper, settings)
+    clip_model = ClipListModel()
+    controller = ClipController(player, clipper, settings, clip_model)
+    window = MainWindow(controller)
     window.show()
 
     # If a video file was passed as argument, load it
     if video_args:
         video_path = Path(video_args[0])
         if video_path.is_file():
-            if player.load(video_path):
-                window.load_video(video_path)
-            else:
-                window.set_status(f"Failed to load: {video_path.name}")
+            controller.open_file(video_path)
+        else:
+            logger.warning("Argument path not found: %s", video_path)
+            window.set_status(f"File not found: {video_path.name}")
 
+    logger.info("Entering Qt event loop")
     sys.exit(app.exec())
 
 

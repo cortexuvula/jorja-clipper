@@ -1,8 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for macOS — bundles libmpv."""
 
-import os
 import glob
+import os
+
+from common import make_analysis, make_exe, make_pyz
 
 # Find libmpv.dylib — installed by `brew install mpv`
 _mpv_libs = []
@@ -18,47 +20,15 @@ for lib in sorted(set(_mpv_libs)):
     if real not in [b[0] for b in _binaries]:
         _binaries.append((real, os.path.basename(lib)))
 
-a = Analysis(
-    ['../src/jorja_clipper/app.py'],
-    pathex=[],
-    binaries=_binaries,
-    datas=[],
-    hiddenimports=['mpv'],
-    hookspath=[],
-    runtime_hooks=['packaging/runtime_hook_mpv.py'],
-    hooksconfig={},
-    excludes=[],
-    noarchive=False,
-)
+a = make_analysis("../src/jorja_clipper/app.py", binaries=_binaries)
 
-pyz = PYZ(a.pure)
+pyz = make_pyz(a)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='jorja-clipper',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    console=False,
-    disable_windowed_traceback=False,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='jorja-clipper',
-)
+exe, coll = make_exe(pyz, a, icon=None, console=False, collect=True)
 
 app = BUNDLE(
     coll,
-    name='Jorja Clipper.app',
+    name="Jorja Clipper.app",
     icon=None,
-    bundle_identifier='com.cortexuvula.jorja-clipper',
+    bundle_identifier="com.cortexuvula.jorja-clipper",
 )

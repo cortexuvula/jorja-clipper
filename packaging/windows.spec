@@ -1,8 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for Windows — bundles mpv DLLs."""
 
-import os
 import glob
+import os
+
+from common import make_analysis, make_exe, make_pyz
 
 # Find mpv DLLs — installed by `choco install mpv`
 _mpv_dlls = []
@@ -27,35 +29,8 @@ for dll in sorted(set(_mpv_dlls)):
     if real not in [b[0] for b in _binaries]:
         _binaries.append((real, os.path.basename(dll)))
 
-a = Analysis(
-    ['..\\src\\jorja_clipper\\app.py'],
-    pathex=[],
-    binaries=_binaries,
-    datas=[],
-    hiddenimports=['mpv'],
-    hookspath=[],
-    runtime_hooks=['packaging/runtime_hook_mpv.py'],
-    hooksconfig={},
-    excludes=[],
-    noarchive=False,
-)
+a = make_analysis("..\\src\\jorja_clipper\\app.py", binaries=_binaries)
 
-pyz = PYZ(a.pure)
+pyz = make_pyz(a)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.datas,
-    [],
-    name='jorja-clipper',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
-    disable_windowed_traceback=False,
-    icon=None,
-)
+exe = make_exe(pyz, a, icon=None, console=False)
