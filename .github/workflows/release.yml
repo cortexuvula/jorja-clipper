@@ -187,8 +187,18 @@ jobs:
           CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
         run: |
           if [ -z "$CERT_BASE64" ]; then exit 0; fi
-          xcrun stapler staple "dist/Jorja Clipper.app" || \
-            echo "::warning::Stapling failed (non-fatal — zip is still notarized)"
+          # Apple's CloudKit propagation can lag 30-60 s after notarization.
+          # Retry up to 5 times with 30-second waits.
+          for i in 1 2 3 4 5; do
+            echo "Staple attempt $i..."
+            if xcrun stapler staple "dist/Jorja Clipper.app"; then
+              echo "Stapled successfully."
+              exit 0
+            fi
+            echo "Attempt $i failed — waiting 30 s for CloudKit propagation..."
+            sleep 30
+          done
+          echo "::warning::Stapling failed after 5 retries — zip is still notarized (Gatekeeper checks online)"
 
       - name: "[macOS] Build DMG"
         if: runner.os == 'macOS'
