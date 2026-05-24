@@ -89,6 +89,11 @@ class MainWindow(QMainWindow):
         self._btn_settings.clicked.connect(self._open_settings)
         controls.addWidget(self._btn_settings)
 
+        self._btn_undo = QPushButton("Undo (U)")
+        self._btn_undo.clicked.connect(self._on_undo_requested)
+        self._btn_undo.setEnabled(False)
+        controls.addWidget(self._btn_undo)
+
         left_layout.addLayout(controls)
         splitter.addWidget(left)
 
@@ -147,6 +152,9 @@ class MainWindow(QMainWindow):
         )
         self._shortcuts.append(
             QShortcut(QKeySequence("Q"), self, self.close)
+        )
+        self._shortcuts.append(
+            QShortcut(QKeySequence("U"), self, self._on_undo_requested)
         )
 
     def update_shortcuts(self) -> None:
@@ -209,9 +217,19 @@ class MainWindow(QMainWindow):
         if getattr(result, "success", False):
             name = Path(getattr(result, "path", "")).name
             self.set_status(f"Clip saved: {name}")
+            self._btn_undo.setEnabled(True)
         else:
             error = getattr(result, "error", "unknown error")
             self.set_status(f"Clip failed: {error[:80]}")
+
+    def _on_undo_requested(self) -> None:
+        """Undo the last clip and update UI state."""
+        undone = self._controller.undo_last_clip()
+        if undone:
+            self.set_status("Last clip undone.")
+            self._btn_undo.setEnabled(False)
+        else:
+            self.set_status("Nothing to undo.")
 
     def _open_settings(self) -> None:
         """Open the settings dialog."""

@@ -99,6 +99,13 @@ class Player:
         with contextlib.suppress(Exception):
             self._mpv.command("seek", offset, "relative")
 
+    def seek_to(self, position: float) -> None:
+        """Seek to an absolute position in seconds."""
+        if self._mpv is None:
+            return
+        with contextlib.suppress(Exception):
+            self._mpv.command("seek", position, "absolute")
+
     def shutdown(self) -> None:
         """Clean up mpv instance."""
         if self._mpv is not None:

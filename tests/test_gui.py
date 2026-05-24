@@ -48,6 +48,24 @@ def test_clip_list_model_clip_at():
     assert model.clip_at(99) is None
 
 
+def test_clip_list_model_remove_last():
+    """remove_last pops the most recent clip and updates rowCount."""
+    model = ClipListModel()
+    model.add_clip("/tmp/a.mp4", 10.0, 20.0)
+    model.add_clip("/tmp/b.mp4", 30.0, 40.0)
+    entry = model.remove_last()
+    assert entry is not None
+    assert entry.path == "/tmp/b.mp4"
+    assert model.rowCount() == 1
+    assert model.clip_at(0).path == "/tmp/a.mp4"
+
+
+def test_clip_list_model_remove_last_empty():
+    """remove_last on an empty model returns None."""
+    model = ClipListModel()
+    assert model.remove_last() is None
+
+
 @_needs_display
 def test_settings_dialog_reads_settings(qtbot):
     """SettingsDialog populates fields from the passed Settings."""

@@ -44,6 +44,16 @@ class ClipListModel(QAbstractListModel):
         self._clips.append(entry)
         self.endInsertRows()
 
+    def remove_last(self) -> ClipEntry | None:
+        """Remove the most recent clip (last row) and return it."""
+        if not self._clips:
+            return None
+        last_idx = len(self._clips) - 1
+        self.beginRemoveRows(QModelIndex(), last_idx, last_idx)
+        entry = self._clips.pop()
+        self.endRemoveRows()
+        return entry
+
     def clip_at(self, index: int) -> ClipEntry | None:
         """Return the clip entry at the given row index."""
         if 0 <= index < len(self._clips):

@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 from jorja_clipper.clipper import Clipper, ClipResult
+from jorja_clipper.clip_store import ClipStore, StoredClip
 from jorja_clipper.gui.clip_list import ClipListModel
 from jorja_clipper.player import Player
 from jorja_clipper.settings import Settings
@@ -21,14 +22,18 @@ class ClipController:
         clipper: Clipper,
         settings: Settings,
         clip_model: ClipListModel,
+        clip_store: ClipStore | None = None,
     ) -> None:
         self._player = player
         self._clipper = clipper
         self._settings = settings
         self._clip_model = clip_model
+        self._clip_store = clip_store or ClipStore()
         self._current_video: Path | None = None
         self._clip_count = 0
         self._active_worker: ClipWorker | None = None
+        self._last_undo_info: tuple[StoredClip, float] | None = None
+        """(stored_clip, video_position_at_undo) so we can restore position on undo."""
 
     # ------------------------------------------------------------------
     # Properties delegated to underlying components
@@ -62,6 +67,16 @@ class ClipController:
     # File / Player operations
     # ------------------------------------------------------------------
 
+    def load_clips_for_current_video(self) -> None:
+        """Load persisted clips for the current video into the model."""
+        if self._current_video is None:
+            return
+        stored = self._clip_store.get_clips_for_video(str(self._current_video))
+        for sc in reversed(stored):  # oldest first so newest ends up on top
+            self._clip_model.add_clip(sc.clip_path, sc.start_time, sc.end_time)
+        self._clip_count = self._clip_model.rowCount()
+        logger.debug("Loaded %d persisted clip(s) for %s", len(stored), self._current_video)
+
     def open_file(self, video_path: Path) -> bool:
         """Load a video file into the player."""
         logger.info("Opening video: %s", video_path)
@@ -69,6 +84,7 @@ class ClipController:
         success = self._player.load(video_path)
         if success:
             logger.info("Video loaded successfully")
+            self.load_clips_for_current_video()
         else:
             logger.error("Failed to load video: %s", video_path)
         return success
@@ -141,6 +157,16 @@ class ClipController:
         if result.success:
             self._clip_count += 1
             self._clip_model.add_clip(result.path, result.start_time, result.end_time)
+            if self._current_video is not None:
+                self._clip_store.add_clip(
+                    clip_path=result.path,
+                    source_video_path=str(self._current_video),
+                    start_time=result.start_time,
+                    end_time=result.end_time,
+                )
+                stored = self._clip_store.get_last_clip()
+                if stored is not None:
+                    self._last_undo_info = (stored, result.start_time)
             logger.info("Clip saved: %s", result.path)
         else:
             logger.error("Clip failed: %s", result.error)
@@ -148,6 +174,38 @@ class ClipController:
         if self._active_worker is not None:
             self._active_worker.deleteLater()
             self._active_worker = None
+
+    def undo_last_clip(self) -> bool:
+        """Undo the most recent clip: delete file, DB entry, model row, and restore position.
+
+        Returns True if an undo was performed.
+        """
+        if self._last_undo_info is None:
+            logger.info("Undo requested but no clip to undo")
+            return False
+
+        stored, restore_pos = self._last_undo_info
+        logger.info("Undoing clip %d at %s", stored.id, stored.clip_path)
+
+        # 1. Remove from model (remove the last/top row)
+        self._clip_model.remove_last()
+        self._clip_count = max(0, self._clip_count - 1)
+
+        # 2. Delete from persistence
+        self._clip_store.delete_clip(stored.id)
+
+        # 3. Delete file from disk
+        try:
+            Path(stored.clip_path).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Could not delete clip file: %s", exc)
+
+        # 4. Restore video position
+        self._player.seek_to(restore_pos)
+
+        self._last_undo_info = None
+        logger.info("Undo complete — restored position %.1fs", restore_pos)
+        return True
 
     # ------------------------------------------------------------------
     # Settings operations
