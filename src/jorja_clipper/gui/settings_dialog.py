@@ -1,6 +1,7 @@
 """Settings dialog for Jorja Clipper."""
 
 import logging
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
@@ -16,6 +17,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from jorja_clipper.settings import Settings
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 class SettingsDialog(QDialog):
     """Dialog to edit application settings."""
 
-    def __init__(self, settings: Settings, parent=None):
+    def __init__(self, settings: Settings, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._settings = settings
         self.setWindowTitle("Settings")
@@ -78,13 +80,13 @@ class SettingsDialog(QDialog):
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._status)
 
-    def _browse_output_dir(self):
+    def _browse_output_dir(self) -> None:
         """Open a folder dialog to select output directory."""
         path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if path:
             self._output_dir.setText(path)
 
-    def _on_save(self):
+    def _on_save(self) -> None:
         key = self._key_clip.keySequence().toString()
         if not key:
             QMessageBox.warning(self, "Invalid Key", "Clip key cannot be empty.")

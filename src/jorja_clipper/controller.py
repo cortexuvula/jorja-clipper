@@ -21,7 +21,7 @@ class ClipController:
         clipper: Clipper,
         settings: Settings,
         clip_model: ClipListModel,
-    ):
+    ) -> None:
         self._player = player
         self._clipper = clipper
         self._settings = settings

@@ -1,5 +1,6 @@
 """Main application entry point."""
 
+import contextlib
 import locale
 import logging
 import logging.handlers
@@ -8,10 +9,8 @@ from pathlib import Path
 
 # Fix libmpv locale crash on Unix-like platforms — must run before any mpv/Qt imports
 if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
-    try:
+    with contextlib.suppress(locale.Error):
         locale.setlocale(locale.LC_NUMERIC, "C")
-    except locale.Error:
-        pass
 
 from PySide6.QtWidgets import QApplication
 
@@ -56,7 +55,7 @@ def _setup_logging() -> None:
     logger.info("Logging configured — file: %s", log_file)
 
 
-def main():
+def main() -> None:
     """Launch Jorja Clipper."""
     _setup_logging()
     logger.info("Jorja Clipper starting")

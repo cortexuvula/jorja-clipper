@@ -8,7 +8,7 @@ dynamic = ["version"]
 description = "Cross-platform desktop app for instant sports highlight extraction."
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     {name = "Turing"},
 ]
@@ -27,16 +27,18 @@ classifiers = [
     "Topic :: Multimedia :: Video",
 ]
 dependencies = [
-    "PySide6>=6.6",
-    "python-mpv>=1.0.1",
+    "PySide6>=6.11,<6.12",
+    "python-mpv>=1.0.7,<2.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-qt>=4.2",
-    "ruff>=0.1.0",
-    "pyinstaller>=6.0",
+    "pytest>=7.0,<9.0",
+    "pytest-qt>=4.2,<5.0",
+    "ruff>=0.1.0,<1.0",
+]
+packaging = [
+    "pyinstaller>=6.0,<7.0",
 ]
 
 [project.urls]

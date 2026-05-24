@@ -7,7 +7,7 @@ from pathlib import Path
 class Settings:
     """Manages application configuration."""
 
-    def __init__(self, config_path: Path | None = None):
+    def __init__(self, config_path: Path | None = None) -> None:
         default = Path.home() / ".config" / "jorja-clipper" / "config.json"
         self.config_path = config_path or default
         self.buffer_before: float = 5.0

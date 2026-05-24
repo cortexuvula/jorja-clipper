@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
@@ -18,14 +19,14 @@ class ClipEntry:
 class ClipListModel(QAbstractListModel):
     """Model for the list of saved clips."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._clips: list[ClipEntry] = []
 
-    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: ARG002
+    def rowCount(self, parent: Any = QModelIndex()) -> int:  # noqa: B008,ARG002
         return len(self._clips)
 
-    def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):
+    def data(self, index: Any, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if not index.isValid() or index.row() >= len(self._clips):
             return None
         clip = self._clips[index.row()]
@@ -36,7 +37,7 @@ class ClipListModel(QAbstractListModel):
             return clip
         return None
 
-    def add_clip(self, path: str, start_time: float, end_time: float):
+    def add_clip(self, path: str, start_time: float, end_time: float) -> None:
         """Add a new clip to the model."""
         self.beginInsertRows(QModelIndex(), len(self._clips), len(self._clips))
         entry = ClipEntry(path=path, start_time=start_time, end_time=end_time)

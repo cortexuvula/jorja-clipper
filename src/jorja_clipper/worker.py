@@ -1,8 +1,10 @@
 """Async clip worker — runs ffmpeg in a background QThread."""
 
-from PySide6.QtCore import QThread, Signal
+from pathlib import Path
 
-from jorja_clipper.clipper import Clipper, ClipResult
+from PySide6.QtCore import QObject, QThread, Signal
+
+from jorja_clipper.clipper import Clipper
 
 
 class ClipWorker(QThread):
@@ -13,12 +15,12 @@ class ClipWorker(QThread):
     def __init__(
         self,
         clipper: Clipper,
-        video_path,
+        video_path: Path,
         current_pos: float,
         video_duration: float,
         clip_number: int,
-        parent=None,
-    ):
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(parent)
         self._clipper = clipper
         self._video_path = video_path
@@ -26,7 +28,7 @@ class ClipWorker(QThread):
         self._video_duration = video_duration
         self._clip_number = clip_number
 
-    def run(self):
+    def run(self) -> None:
         """Execute the blocking ffmpeg call and emit the result."""
         result = self._clipper.save_clip(
             video_path=self._video_path,

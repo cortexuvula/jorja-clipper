@@ -1,7 +1,7 @@
 """Tests for the player wrapper."""
 
-from unittest.mock import MagicMock, patch
 import threading
+from unittest.mock import MagicMock, patch
 
 from jorja_clipper.player import Player
 

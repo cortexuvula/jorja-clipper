@@ -21,7 +21,7 @@ class ClipResult:
 class Clipper:
     """Extracts clips from video files using ffmpeg stream-copy."""
 
-    def __init__(self, buffer_before: float = 5.0, buffer_after: float = 5.0):
+    def __init__(self, buffer_before: float = 5.0, buffer_after: float = 5.0) -> None:
         self.buffer_before = buffer_before
         self.buffer_after = buffer_after
 

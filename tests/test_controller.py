@@ -3,10 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-
-from jorja_clipper.controller import ClipController
 from jorja_clipper.clipper import ClipResult
+from jorja_clipper.controller import ClipController
 from jorja_clipper.gui.clip_list import ClipListModel
 
 
@@ -44,7 +42,7 @@ def test_controller_toggle_play():
 
 
 def test_controller_seek():
-    """seek delegates to player.seek."""
+    """Seek delegates to player.seek."""
     player = MagicMock()
     ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
     ctrl.seek(5.0)
@@ -52,7 +50,7 @@ def test_controller_seek():
 
 
 def test_controller_shutdown():
-    """shutdown delegates to player.shutdown."""
+    """Shutdown delegates to player.shutdown."""
     player = MagicMock()
     ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
     ctrl.shutdown()
@@ -133,6 +131,7 @@ def test_controller_apply_settings():
 def test_logging_setup():
     """app._setup_logging configures root logger with two handlers."""
     import logging
+
     from jorja_clipper.app import _setup_logging
 
     # Clear any existing handlers to get a clean state

@@ -7,7 +7,6 @@ import pytest
 
 from jorja_clipper.clipper import Clipper
 
-
 pytestmark = pytest.mark.skipif(
     shutil.which("ffmpeg") is None,
     reason="ffmpeg not installed",
