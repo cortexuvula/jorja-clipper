@@ -42,6 +42,12 @@ class Player:
         logger.info(
             "Creating mpv instance (vo=%s, wid=%s)", kwargs.get("vo", "auto"), self._wid
         )
+        # Re-apply locale fix right before mpv init — Qt resets LC_NUMERIC
+        # on Linux, and libmpv crashes if it isn't "C".
+        import locale
+
+        with contextlib.suppress(locale.Error):
+            locale.setlocale(locale.LC_NUMERIC, "C")
         self._mpv = mpv.MPV(**kwargs)
 
         # Register property observers — keep strong references to prevent GC
