@@ -6,7 +6,6 @@ imports them, and instantiates any class that subclasses :class:`ClipPlugin`.
 
 import importlib.util
 import logging
-from abc import ABC, abstractmethod
 from pathlib import Path
 
 from jorja_clipper.clipper import ClipResult
@@ -16,7 +15,7 @@ __all__ = ["ClipPlugin", "PluginLoader"]
 logger = logging.getLogger(__name__)
 
 
-class ClipPlugin(ABC):
+class ClipPlugin:
     """Base class for Jorja Clipper plugins.
 
     Subclass this and implement any of the hooks you care about.
@@ -28,19 +27,16 @@ class ClipPlugin(ABC):
         """Human-readable plugin name. Defaults to the class name."""
         return self.__class__.__name__
 
-    @abstractmethod
-    def on_clip_start(
+    def on_clip_start(  # noqa: B027
         self, video_path: Path, start_time: float, end_time: float
     ) -> None:
         """Called just before a clip extraction begins."""
 
-    @abstractmethod
-    def on_clip_complete(self, result: ClipResult) -> None:
+    def on_clip_complete(self, result: ClipResult) -> None:  # noqa: B027
         """Called after a clip finishes successfully."""
 
-    @abstractmethod
-    def on_clip_error(self, result: ClipResult) -> None:
-        """Called when a clip extraction fails."""
+    def on_clip_error(self, result: ClipResult) -> None:  # noqa: B027
+        """When a clip extraction fails."""
 
 
 class PluginLoader:
