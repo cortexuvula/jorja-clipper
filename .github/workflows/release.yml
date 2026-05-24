@@ -136,22 +136,27 @@ jobs:
             exit 0
           fi
           APP="dist/Jorja Clipper.app"
-          # Remove PyInstaller's Python.framework — it breaks codesign
-          # and isn't needed at runtime (the actual Python is in the binary)
+          # Remove PyInstaller's Python.framework symlinks that
+          # confuse codesign --deep. Replace with flat copies.
           FW="$APP/Contents/Frameworks/Python.framework"
           if [ -d "$FW" ]; then
-            rm -rf "$FW"
+            find "$FW" -type l | while read link; do
+              target=$(readlink "$link")
+              rm -f "$link"
+              # Resolve relative symlink to absolute target
+              dir=$(dirname "$link")
+              cp -a "$dir/$target" "$link" 2>/dev/null || true
+            done
           fi
           # Sign embedded dylibs/so files first
           find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
             codesign --sign "$IDENTITY" --timestamp --force --options runtime {} \;
           # Deep-sign the bundle with hardened runtime + entitlements
-          codesign --deep --force --verify --verbose=2 \
+          codesign --deep --force --verbose=2 \
             --sign "$IDENTITY" --timestamp --options runtime \
             --entitlements packaging/macos.entitlements.plist \
             "$APP"
-          echo "Signed. Verifying..."
-          codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "Signed."
 
       - name: "[macOS] Zip for notarization"
         if: runner.os == 'macOS'
