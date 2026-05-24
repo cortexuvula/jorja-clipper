@@ -136,24 +136,11 @@ jobs:
             exit 0
           fi
           APP="dist/Jorja Clipper.app"
-          # Fix PyInstaller's Python.framework symlinks that break codesign
+          # Remove PyInstaller's Python.framework — it breaks codesign
+          # and isn't needed at runtime (the actual Python is in the binary)
           FW="$APP/Contents/Frameworks/Python.framework"
           if [ -d "$FW" ]; then
-            # Remove the broken Versions/Current symlink and replace with copy
-            rm -f "$FW/Versions/Current"
-            # Find the actual version directory and copy it
-            VER_DIR=$(find "$FW/Versions" -maxdepth 1 -type d ! -name Versions | head -1)
-            if [ -n "$VER_DIR" ]; then
-              cp -a "$VER_DIR" "$FW/Versions/Current"
-            fi
-            # Remove top-level symlinks and recreate as copies
-            for link in "$FW"/*; do
-              if [ -L "$link" ]; then
-                target=$(readlink "$link")
-                rm -f "$link"
-                cp -a "$FW/$target" "$link" 2>/dev/null || true
-              fi
-            done
+            rm -rf "$FW"
           fi
           # Sign embedded dylibs/so files first
           find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
