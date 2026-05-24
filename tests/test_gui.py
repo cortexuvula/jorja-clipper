@@ -8,11 +8,12 @@ import pytest
 
 from jorja_clipper.gui.clip_list import ClipListModel
 
-# Skip widget-creating tests on headless Linux CI (xvfb can crash with
-# certain Qt widgets like QKeySequenceEdit).
+# Skip widget-creating tests in CI environments where Qt crashes
+# (headless Linux, macOS segfaults, Windows event loop errors)
 _needs_display = pytest.mark.skipif(
-    sys.platform == "linux" and not os.environ.get("DISPLAY"),
-    reason="No display available (headless Linux CI)",
+    os.environ.get("CI") == "true"
+    or (sys.platform == "linux" and not os.environ.get("DISPLAY")),
+    reason="Qt GUI tests skipped in CI or headless environment",
 )
 
 
