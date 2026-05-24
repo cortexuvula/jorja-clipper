@@ -89,9 +89,9 @@ def test_clipper_save_calls_ffmpeg(mock_run):
 
 
 @patch("jorja_clipper.clipper.subprocess.run")
-def test_clipper_save_handles_ffmpeg_failure(mock_run):
-    """save_clip returns failure result when ffmpeg exits non-zero."""
-    mock_run.return_value = MagicMock(returncode=1, stderr="error")
+def test_clipper_save_handles_ffmpeg_not_found(mock_run):
+    """save_clip returns failure result when ffmpeg is not in PATH."""
+    mock_run.side_effect = FileNotFoundError("[Errno 2] No such file or directory: 'ffmpeg'")
     c = Clipper()
     result = c.save_clip(
         video_path=Path("/tmp/game.mp4"),
@@ -100,3 +100,4 @@ def test_clipper_save_handles_ffmpeg_failure(mock_run):
         clip_number=1,
     )
     assert result.success is False
+    assert "ffmpeg" in result.error.lower() or "no such file" in result.error.lower()

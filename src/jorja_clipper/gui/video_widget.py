@@ -1,7 +1,12 @@
 """Embeddable video widget for mpv."""
 
+import logging
+import sys
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QWidget
+
+logger = logging.getLogger(__name__)
 
 
 class VideoWidget(QWidget):
@@ -27,5 +32,8 @@ class VideoWidget(QWidget):
         #   macOS: NSView / Window pointer
         #   Windows: HWND
         wid = int(self.winId())
+        logger.info("Binding mpv to wid=%s on platform=%s", wid, sys.platform)
         if wid:
             self._player.init_with_wid(wid)
+        else:
+            logger.warning("winId() returned 0; mpv embedding may fail on this platform")

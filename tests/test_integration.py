@@ -1,8 +1,17 @@
 """Integration tests for the full clip workflow."""
 
+import shutil
 from pathlib import Path
 
+import pytest
+
 from jorja_clipper.clipper import Clipper
+
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None,
+    reason="ffmpeg not installed",
+)
 
 
 def test_full_clip_workflow(test_video, tmp_path):

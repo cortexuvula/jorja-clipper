@@ -1,5 +1,6 @@
 """Core clip engine — extracts clips via ffmpeg stream-copy."""
 
+import shutil
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
@@ -28,6 +29,8 @@ class Clipper:
         self, current_pos: float, video_duration: float
     ) -> tuple[float, float]:
         """Calculate start/end times clamped to [0, duration]."""
+        if video_duration is None or current_pos is None:
+            return 0.0, 0.0
         start = max(0.0, current_pos - self.buffer_before)
         end = min(video_duration, current_pos + self.buffer_after)
         return start, end
@@ -50,6 +53,14 @@ class Clipper:
         clip_number: int,
     ) -> ClipResult:
         """Save a clip using ffmpeg stream-copy (no re-encoding)."""
+        if shutil.which("ffmpeg") is None:
+            return ClipResult(
+                path="",
+                start_time=0.0,
+                end_time=0.0,
+                success=False,
+                error="ffmpeg not found in PATH — please install ffmpeg",
+            )
         start, end = self.calculate_times(current_pos, video_duration)
         if end <= start:
             return ClipResult(

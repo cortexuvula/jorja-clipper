@@ -45,6 +45,11 @@ class Player:
                 with self._lock:
                     self._current_pos = float(value)
 
+        @self._mpv.property_observer("pause")
+        def _on_pause(_name, value):
+            if value is not None:
+                self._paused = bool(value)
+
     def init_with_wid(self, wid: int) -> None:
         """Bind mpv to a native widget handle (lazy init)."""
         self._wid = wid
@@ -74,7 +79,7 @@ class Player:
         except mpv.MPVError as exc:
             return False
         self._mpv.pause = "yes"
-        self._paused = True
+        self._paused = bool(self._mpv.pause) if self._mpv is not None else True
         return True
 
     def toggle_pause(self) -> None:

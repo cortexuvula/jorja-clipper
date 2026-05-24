@@ -1,5 +1,6 @@
 """Settings dialog for Jorja Clipper."""
 
+import logging
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence
 from PySide6.QtWidgets import (
@@ -12,11 +13,14 @@ from PySide6.QtWidgets import (
     QKeySequenceEdit,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
 
 from jorja_clipper.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 class SettingsDialog(QDialog):
@@ -83,11 +87,16 @@ class SettingsDialog(QDialog):
     def _on_save(self):
         key = self._key_clip.keySequence().toString()
         if not key:
-            self._status.setText("Clip key cannot be empty.")
+            QMessageBox.warning(self, "Invalid Key", "Clip key cannot be empty.")
             return
         self._settings.buffer_before = self._spin_before.value()
         self._settings.buffer_after = self._spin_after.value()
         self._settings.clip_key = key.split(",")[0].strip()
         self._settings.output_dir = self._output_dir.text().strip()
-        self._settings.save()
+        try:
+            self._settings.save()
+        except RuntimeError as exc:
+            logger.error("Failed to save settings: %s", exc)
+            QMessageBox.critical(self, "Save Failed", str(exc))
+            return
         self.accept()

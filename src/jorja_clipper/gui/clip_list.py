@@ -22,7 +22,7 @@ class ClipListModel(QAbstractListModel):
         super().__init__()
         self._clips: list[ClipEntry] = []
 
-    def rowCount(self, parent=None) -> int:  # noqa: ARG002
+    def rowCount(self, parent=QModelIndex()) -> int:  # noqa: ARG002
         return len(self._clips)
 
     def data(self, index: QModelIndex, role=Qt.ItemDataRole.DisplayRole):

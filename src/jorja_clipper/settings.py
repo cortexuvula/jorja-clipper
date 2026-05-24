@@ -24,7 +24,10 @@ class Settings:
             "clip_key": self.clip_key,
             "output_dir": self.output_dir,
         }
-        self.config_path.write_text(json.dumps(data, indent=2))
+        try:
+            self.config_path.write_text(json.dumps(data, indent=2))
+        except OSError as exc:
+            raise RuntimeError(f"Failed to save settings: {exc}") from exc
 
     def load(self) -> None:
         """Load settings from JSON file, using defaults for missing keys."""
@@ -36,5 +39,11 @@ class Settings:
             self.buffer_after = float(data.get("buffer_after", self.buffer_after))
             self.clip_key = data.get("clip_key", self.clip_key)
             self.output_dir = data.get("output_dir", self.output_dir)
+            if self.buffer_before < 0 or self.buffer_after < 0:
+                raise ValueError("negative buffer")
         except (json.JSONDecodeError, KeyError, UnicodeDecodeError, OSError):
             pass  # Use defaults on corrupt file
+        except (ValueError, TypeError):
+            # Reset to defaults on invalid numeric values
+            self.buffer_before = 5.0
+            self.buffer_after = 5.0

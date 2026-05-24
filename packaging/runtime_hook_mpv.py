@@ -30,11 +30,10 @@ def _patched_find_library(name):
         "mpv-2.dll",
         "libmpv-2.dll",
     ]
-    for name in candidates:
-        path = os.path.join(bundle_dir, name)
+    for candidate in candidates:
+        path = os.path.join(bundle_dir, candidate)
         if os.path.isfile(path):
             return path
-
     return None
 
 
