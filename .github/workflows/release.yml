@@ -143,14 +143,19 @@ jobs:
           if [ -d "$FW" ]; then
             rm -rf "$FW"
           fi
-          # Sign every Mach-O binary in the bundle individually
-          find "$APP" -type f \( -name "*.dylib" -o -name "*.so" \) -exec \
-            codesign --sign "$IDENTITY" --timestamp --force --options runtime {} \;
+          # Sign every Mach-O binary in the bundle — use `file` to detect
+          # all Mach-O files, not just those with .dylib/.so extensions.
+          find "$APP" -type f | while read -r f; do
+            if file -b "$f" | grep -q "Mach-O"; then
+              codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
+            fi
+          done
           # Sign the main executable
           codesign --sign "$IDENTITY" --timestamp --force --options runtime \
             --entitlements packaging/macos.entitlements.plist \
             "$APP"
           echo "Signed."
+          codesign --verify --deep --strict "$APP" || echo "::warning::codesign verify failed"
 
       - name: "[macOS] Zip for notarization"
         if: runner.os == 'macOS'
@@ -174,11 +179,23 @@ jobs:
             echo "::warning::No signing certificate; skipping notarization."
             exit 0
           fi
-          xcrun notarytool submit "dist/jorja-clipper-notarize.zip" \
+          # Capture submission ID for log fetch on failure
+          OUTPUT=$(xcrun notarytool submit "dist/jorja-clipper-notarize.zip" \
             --apple-id "$APPLE_ID" \
             --password "$PASSWORD" \
             --team-id "$TEAM_ID" \
-            --wait
+            --wait 2>&1) || true
+          echo "$OUTPUT"
+          # Fetch detailed log if notarization was not accepted
+          if echo "$OUTPUT" | grep -q "status: Invalid"; then
+            SUBMISSION_ID=$(echo "$OUTPUT" | grep "id:" | head -1 | awk '{print $2}')
+            echo "::error::Notarization failed (Invalid). Fetching log..."
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$PASSWORD" \
+              --team-id "$TEAM_ID" || true
+            exit 1
+          fi
           rm -f dist/jorja-clipper-notarize.zip
 
       - name: "[macOS] Staple notarization ticket"
