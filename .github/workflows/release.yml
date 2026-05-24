@@ -136,19 +136,16 @@ jobs:
             exit 0
           fi
           APP="dist/Jorja Clipper.app"
-          # Remove PyInstaller's Python.framework — its structure
-          # confuses codesign ("ambiguous bundle"). Not needed at
-          # runtime since Python is statically linked into the binary.
-          FW="$APP/Contents/Frameworks/Python.framework"
-          if [ -d "$FW" ]; then
-            rm -rf "$FW"
-          fi
           # Sign every Mach-O binary in the bundle — use `file` to detect
           # all Mach-O files, not just those with .dylib/.so extensions.
           find "$APP" -type f | while read -r f; do
             if file -b "$f" | grep -q "Mach-O"; then
               codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
             fi
+          done
+          # Sign frameworks individually (inside-out) to avoid "ambiguous bundle"
+          find "$APP/Contents/Frameworks" -maxdepth 1 -name "*.framework" -type d | while read -r fw; do
+            codesign --sign "$IDENTITY" --timestamp --force --options runtime "$fw"
           done
           # Sign the main executable
           codesign --sign "$IDENTITY" --timestamp --force --options runtime \
