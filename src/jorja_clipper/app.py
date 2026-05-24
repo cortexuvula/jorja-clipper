@@ -8,9 +8,6 @@ import logging.handlers
 import sys
 from pathlib import Path
 
-# Enable faulthandler early — prints native traceback on SIGSEGV/SIGABRT
-faulthandler.enable()
-
 # Fix libmpv locale crash on Unix-like platforms — must run before any mpv/Qt imports
 if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
     with contextlib.suppress(locale.Error):
@@ -65,6 +62,7 @@ def _setup_logging() -> None:
 
 def main() -> None:
     """Launch Jorja Clipper."""
+    faulthandler.enable()  # print native traceback on SIGSEGV/SIGABRT
     _setup_logging()
     logger.info("Jorja Clipper starting")
 
