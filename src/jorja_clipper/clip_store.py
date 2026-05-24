@@ -62,10 +62,16 @@ class ClipStore:
         with sqlite3.connect(self._db_path) as conn:
             cursor = conn.execute(
                 """
-                INSERT INTO clips (clip_path, source_video_path, start_time, end_time, duration, created_at)
+                INSERT INTO clips (
+                    clip_path, source_video_path,
+                    start_time, end_time, duration, created_at
+                )
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (clip_path, source_video_path, start_time, end_time, duration, created_at),
+                (
+                    clip_path, source_video_path,
+                    start_time, end_time, duration, created_at
+                ),
             )
             conn.commit()
             return cursor.lastrowid or 0
@@ -75,7 +81,8 @@ class ClipStore:
         with sqlite3.connect(self._db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT id, clip_path, source_video_path, start_time, end_time, duration, created_at
+                SELECT id, clip_path, source_video_path, start_time,
+                       end_time, duration, created_at
                 FROM clips
                 ORDER BY created_at DESC
                 """
@@ -87,7 +94,8 @@ class ClipStore:
         with sqlite3.connect(self._db_path) as conn:
             rows = conn.execute(
                 """
-                SELECT id, clip_path, source_video_path, start_time, end_time, duration, created_at
+                SELECT id, clip_path, source_video_path, start_time,
+                       end_time, duration, created_at
                 FROM clips
                 WHERE source_video_path = ?
                 ORDER BY created_at DESC
@@ -108,7 +116,8 @@ class ClipStore:
         with sqlite3.connect(self._db_path) as conn:
             row = conn.execute(
                 """
-                SELECT id, clip_path, source_video_path, start_time, end_time, duration, created_at
+                SELECT id, clip_path, source_video_path, start_time,
+                       end_time, duration, created_at
                 FROM clips
                 ORDER BY created_at DESC
                 LIMIT 1

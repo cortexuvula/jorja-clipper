@@ -17,11 +17,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from jorja_clipper.controller import ClipController
-from jorja_clipper.gui.theme import ThemeManager, THEMES
-from jorja_clipper.worker import ClipWorker
-from jorja_clipper.clipper import ClipResult
 from jorja_clipper.batch_queue import BatchWorker
+from jorja_clipper.clipper import ClipResult
+from jorja_clipper.controller import ClipController
+from jorja_clipper.gui.theme import ThemeManager
+from jorja_clipper.worker import ClipWorker
 
 __all__ = ["MainWindow"]
 
@@ -77,7 +77,9 @@ class MainWindow(QMainWindow):
         left_layout = QVBoxLayout(left)
 
         # Video widget (mpv renders here)
-        self._video_widget = VideoWidget(self._controller.player, self._theme_manager, self)
+        self._video_widget = VideoWidget(
+            self._controller.player, self._theme_manager, self
+        )
         left_layout.addWidget(self._video_widget)
 
         # Status bar
@@ -284,7 +286,6 @@ class MainWindow(QMainWindow):
             return
 
         # It is a BatchWorker (QThread subclass)
-        from jorja_clipper.batch_queue import BatchWorker
         if not isinstance(worker_or_err, BatchWorker):
             self.set_status("Batch failed: unexpected result from process_batch")
             return

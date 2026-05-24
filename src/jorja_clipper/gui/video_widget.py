@@ -18,7 +18,12 @@ __all__ = ["VideoWidget"]
 class VideoWidget(QWidget):
     """A native widget that provides its window handle to mpv."""
 
-    def __init__(self, player: Any, theme_manager: ThemeManager, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        player: Any,
+        theme_manager: ThemeManager,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._player = player
         self._theme_manager = theme_manager

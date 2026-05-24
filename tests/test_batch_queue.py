@@ -38,7 +38,7 @@ def test_clip_queue_enqueue_dequeue():
 
 
 def test_clip_queue_clear():
-    """clear empties the queue."""
+    """Clear empties the queue."""
     q = ClipQueue()
     q.enqueue(ClipRequest(Path("/tmp/a.mp4"), 1.0, 10.0, 1))
     q.clear()

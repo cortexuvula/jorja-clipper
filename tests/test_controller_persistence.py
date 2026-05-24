@@ -3,8 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from jorja_clipper.clipper import ClipResult
 from jorja_clipper.clip_store import ClipStore
+from jorja_clipper.clipper import ClipResult
 from jorja_clipper.controller import ClipController
 from jorja_clipper.gui.clip_list import ClipListModel
 
@@ -47,7 +47,12 @@ def test_controller_persists_new_clip_on_finish(tmp_path):
     ctrl = _make_controller(tmp_path, clip_store=store)
     ctrl._current_video = Path("/tmp/game.mp4")
 
-    result = ClipResult(path=str(tmp_path / "out.mp4"), start_time=25.0, end_time=35.0, success=True)
+    result = ClipResult(
+        path=str(tmp_path / "out.mp4"),
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
     ctrl._on_clip_finished(result)
 
     assert store.get_last_clip() is not None
@@ -71,7 +76,12 @@ def test_controller_undo_restores_state(tmp_path):
     clip_file.parent.mkdir(parents=True, exist_ok=True)
     clip_file.write_text("fake clip")
 
-    result = ClipResult(path=str(clip_file), start_time=25.0, end_time=35.0, success=True)
+    result = ClipResult(
+        path=str(clip_file),
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
     ctrl._on_clip_finished(result)
     assert ctrl.clip_model.rowCount() == 1
     assert store.get_all_clips()
@@ -91,7 +101,12 @@ def test_controller_undo_updates_clip_count(tmp_path):
     ctrl = _make_controller(tmp_path, clip_store=store)
     ctrl._current_video = Path("/tmp/game.mp4")
 
-    result = ClipResult(path=str(tmp_path / "a.mp4"), start_time=10.0, end_time=20.0, success=True)
+    result = ClipResult(
+        path=str(tmp_path / "a.mp4"),
+        start_time=10.0,
+        end_time=20.0,
+        success=True,
+    )
     ctrl._on_clip_finished(result)
     assert ctrl.clip_count == 1
 
@@ -106,7 +121,12 @@ def test_controller_undo_cannot_double_undo(tmp_path):
     ctrl._current_video = Path("/tmp/game.mp4")
 
     ctrl._on_clip_finished(
-        ClipResult(path=str(tmp_path / "a.mp4"), start_time=10.0, end_time=20.0, success=True)
+        ClipResult(
+            path=str(tmp_path / "a.mp4"),
+            start_time=10.0,
+            end_time=20.0,
+            success=True,
+        )
     )
     ctrl.undo_last_clip()
     assert ctrl.undo_last_clip() is False
@@ -119,10 +139,20 @@ def test_controller_undo_deletes_db_row(tmp_path):
     ctrl._current_video = Path("/tmp/game.mp4")
 
     ctrl._on_clip_finished(
-        ClipResult(path=str(tmp_path / "a.mp4"), start_time=10.0, end_time=20.0, success=True)
+        ClipResult(
+            path=str(tmp_path / "a.mp4"),
+            start_time=10.0,
+            end_time=20.0,
+            success=True,
+        )
     )
     ctrl._on_clip_finished(
-        ClipResult(path=str(tmp_path / "b.mp4"), start_time=30.0, end_time=40.0, success=True)
+        ClipResult(
+            path=str(tmp_path / "b.mp4"),
+            start_time=30.0,
+            end_time=40.0,
+            success=True,
+        )
     )
     assert len(store.get_all_clips()) == 2
 

@@ -2,7 +2,6 @@
 
 import textwrap
 from pathlib import Path
-from unittest.mock import MagicMock
 
 from jorja_clipper.clipper import ClipResult
 from jorja_clipper.plugins import ClipPlugin, PluginLoader
@@ -34,7 +33,7 @@ def test_clip_plugin_hooks_are_noops_by_default():
 
 
 def test_plugin_name_defaults_to_class_name():
-    """name returns the class name by default."""
+    """Name returns the class name by default."""
     p = DummyPlugin()
     assert p.name == "DummyPlugin"
 
@@ -128,6 +127,6 @@ def test_broadcast_swallows_plugin_exceptions():
 
 
 def test_plugin_loader_returns_plugins_property():
-    """plugins returns the scanned list."""
+    """Plugins returns the scanned list."""
     loader = PluginLoader()
     assert loader.plugins == []

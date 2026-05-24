@@ -91,7 +91,9 @@ def test_clipper_save_calls_ffmpeg(mock_run):
 @patch("jorja_clipper.clipper.subprocess.run")
 def test_clipper_save_handles_ffmpeg_not_found(mock_run):
     """save_clip returns failure result when ffmpeg is not in PATH."""
-    mock_run.side_effect = FileNotFoundError("[Errno 2] No such file or directory: 'ffmpeg'")
+    mock_run.side_effect = FileNotFoundError(
+        "[Errno 2] No such file or directory: 'ffmpeg'"
+    )
     c = Clipper()
     result = c.save_clip(
         video_path=Path("/tmp/game.mp4"),
@@ -107,7 +109,8 @@ def test_clipper_save_handles_ffmpeg_not_found(mock_run):
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------
 
-from hypothesis import given, strategies as st  # noqa: E402
+from hypothesis import given  # noqa: E402
+from hypothesis import strategies as st  # noqa: E402
 
 
 @given(
@@ -144,8 +147,8 @@ def test_calculate_times_never_raises(current_pos, video_duration):
         start, end = c.calculate_times(current_pos, video_duration)
         assert isinstance(start, float)
         assert isinstance(end, float)
-    except Exception:
-        assert False, "calculate_times should not raise"
+    except Exception as exc:  # noqa: BLE001
+        raise AssertionError("calculate_times should not raise") from exc
 
 
 @given(

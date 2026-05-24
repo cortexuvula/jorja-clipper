@@ -28,12 +28,17 @@ class ClipPlugin(ABC):
         """Human-readable plugin name. Defaults to the class name."""
         return self.__class__.__name__
 
-    def on_clip_start(self, video_path: Path, start_time: float, end_time: float) -> None:
+    @abstractmethod
+    def on_clip_start(
+        self, video_path: Path, start_time: float, end_time: float
+    ) -> None:
         """Called just before a clip extraction begins."""
 
+    @abstractmethod
     def on_clip_complete(self, result: ClipResult) -> None:
         """Called after a clip finishes successfully."""
 
+    @abstractmethod
     def on_clip_error(self, result: ClipResult) -> None:
         """Called when a clip extraction fails."""
 
@@ -52,7 +57,7 @@ class PluginLoader:
     # ------------------------------------------------------------------
 
     def scan(self) -> list[ClipPlugin]:
-        """Scan *plugins_dir* for ``*.py`` files and instantiate any :class:`ClipPlugin` subclasses."""
+        """Scan *plugins_dir* for ``*.py`` files and instantiate any clips."""
         self._plugins.clear()
         if not self._plugins_dir.exists():
             logger.debug("Plugin directory does not exist: %s", self._plugins_dir)
@@ -68,7 +73,7 @@ class PluginLoader:
         return self._plugins
 
     def _load_single(self, py_file: Path) -> ClipPlugin | None:
-        """Import *py_file* and return the first :class:`ClipPlugin` subclass found."""
+        """Import *py_file* and return the first ClipPlugin subclass found."""
         module_name = f"jorja_clipper.plugins.user.{py_file.stem}"
         spec = importlib.util.spec_from_file_location(module_name, py_file)
         if spec is None or spec.loader is None:
@@ -82,11 +87,20 @@ class PluginLoader:
             return None
 
         for obj in vars(module).values():
-            if isinstance(obj, type) and issubclass(obj, ClipPlugin) and obj is not ClipPlugin:
+            if (
+                isinstance(obj, type)
+                and issubclass(obj, ClipPlugin)
+                and obj is not ClipPlugin
+            ):
                 try:
                     return obj()
                 except Exception as exc:
-                    logger.warning("Failed to instantiate %s from %s: %s", obj, py_file, exc)
+                    logger.warning(
+                        "Failed to instantiate %s from %s: %s",
+                        obj,
+                        py_file,
+                        exc,
+                    )
         return None
 
     # ------------------------------------------------------------------
@@ -101,7 +115,9 @@ class PluginLoader:
     # Hook broadcasting
     # ------------------------------------------------------------------
 
-    def broadcast_clip_start(self, video_path: Path, start_time: float, end_time: float) -> None:
+    def broadcast_clip_start(
+        self, video_path: Path, start_time: float, end_time: float
+    ) -> None:
         for p in self._plugins:
             try:
                 p.on_clip_start(video_path, start_time, end_time)

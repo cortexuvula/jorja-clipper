@@ -38,6 +38,7 @@ class ClipQueue:
         self._items.clear()
 
     def __len__(self) -> int:
+        """Return the number of items in the queue."""
         return len(self._items)
 
     @property

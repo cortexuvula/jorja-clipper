@@ -1,10 +1,9 @@
 """Tests for the SQLite clip persistence layer."""
 
-from pathlib import Path
 
 import pytest
 
-from jorja_clipper.clip_store import ClipStore, StoredClip
+from jorja_clipper.clip_store import ClipStore
 
 
 @pytest.fixture
@@ -76,7 +75,7 @@ def test_store_clear_all(store):
 
 
 def test_store_calculates_duration(store):
-    """duration is derived from end - start."""
+    """Duration is derived from end - start."""
     store.add_clip("/tmp/a.mp4", "/tmp/game.mp4", 10.0, 25.0)
     clip = store.get_last_clip()
     assert clip.duration == 15.0

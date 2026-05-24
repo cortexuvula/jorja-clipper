@@ -1,6 +1,6 @@
 """Tests for the theme system."""
 
-from jorja_clipper.gui.theme import Theme, ThemeManager, THEMES, THEME_DARK, THEME_LIGHT
+from jorja_clipper.gui.theme import THEME_DARK, THEME_LIGHT, THEMES, ThemeManager
 
 
 def test_theme_dark_fields():

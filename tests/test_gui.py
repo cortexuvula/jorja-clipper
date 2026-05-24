@@ -88,8 +88,8 @@ def test_video_widget_init(qtbot):
     """VideoWidget stores player reference."""
     from PySide6.QtWidgets import QWidget
 
-    from jorja_clipper.gui.video_widget import VideoWidget
     from jorja_clipper.gui.theme import ThemeManager
+    from jorja_clipper.gui.video_widget import VideoWidget
 
     player = MagicMock()
     theme_manager = ThemeManager()

@@ -4,8 +4,8 @@ import logging
 from pathlib import Path
 
 from jorja_clipper.batch_queue import BatchWorker, ClipQueue, ClipRequest
-from jorja_clipper.clipper import Clipper, ClipResult
 from jorja_clipper.clip_store import ClipStore, StoredClip
+from jorja_clipper.clipper import Clipper, ClipResult
 from jorja_clipper.gui.clip_list import ClipListModel
 from jorja_clipper.player import Player
 from jorja_clipper.plugins import PluginLoader
@@ -97,7 +97,11 @@ class ClipController:
         for sc in reversed(stored):  # oldest first so newest ends up on top
             self._clip_model.add_clip(sc.clip_path, sc.start_time, sc.end_time)
         self._clip_count = self._clip_model.rowCount()
-        logger.debug("Loaded %d persisted clip(s) for %s", len(stored), self._current_video)
+        logger.debug(
+            "Loaded %d persisted clip(s) for %s",
+            len(stored),
+            self._current_video,
+        )
 
     def open_file(self, video_path: Path) -> bool:
         """Load a video file into the player."""
@@ -274,7 +278,9 @@ class ClipController:
         worker.start()
         return worker
 
-    def _on_batch_progress(self, completed: int, total: int, result: ClipResult) -> None:
+    def _on_batch_progress(
+        self, completed: int, total: int, result: ClipResult
+    ) -> None:
         """Handle a single item finishing inside a batch run."""
         if result.success:
             self._clip_model.add_clip(result.path, result.start_time, result.end_time)
@@ -286,10 +292,14 @@ class ClipController:
                     end_time=result.end_time,
                 )
             self._plugin_loader.broadcast_clip_complete(result)
-            logger.info("Batch progress %d/%d — saved %s", completed, total, result.path)
+            logger.info(
+                "Batch progress %d/%d — saved %s", completed, total, result.path
+            )
         else:
             self._plugin_loader.broadcast_clip_error(result)
-            logger.error("Batch progress %d/%d — failed: %s", completed, total, result.error)
+            logger.error(
+                "Batch progress %d/%d — failed: %s", completed, total, result.error
+            )
 
     def _on_batch_finished(self, results: list[ClipResult]) -> None:
         """Handle completion of the entire batch queue."""
@@ -309,7 +319,7 @@ class ClipController:
     # ------------------------------------------------------------------
 
     def undo_last_clip(self) -> bool:
-        """Undo the most recent clip: delete file, DB entry, model row, and restore position.
+        """Undo the most recent clip: delete file, DB entry, model, restore position.
 
         Returns True if an undo was performed.
         """
