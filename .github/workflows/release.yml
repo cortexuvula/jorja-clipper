@@ -187,7 +187,8 @@ jobs:
           CERT_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
         run: |
           if [ -z "$CERT_BASE64" ]; then exit 0; fi
-          xcrun stapler staple "dist/Jorja Clipper.app"
+          xcrun stapler staple "dist/Jorja Clipper.app" || \
+            echo "::warning::Stapling failed (non-fatal — zip is still notarized)"
 
       - name: "[macOS] Build DMG"
         if: runner.os == 'macOS'
