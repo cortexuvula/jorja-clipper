@@ -1,12 +1,15 @@
 """Player wrapper around python-mpv."""
 
 import contextlib
+import logging
 import sys
 import threading
 from pathlib import Path
 from typing import Any
 
 import mpv
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["Player"]
 
@@ -21,6 +24,7 @@ class Player:
         self._paused = True
         self._wid: int | None = None
         self._lock = threading.Lock()
+        self._property_refs: list[Any] = []  # prevent GC of observer closures
 
     def _ensure_mpv(self) -> None:
         if self._mpv is not None:
@@ -35,24 +39,33 @@ class Player:
             kwargs["vo"] = "libmpv"
         if self._wid is not None:
             kwargs["wid"] = self._wid
+        logger.info(
+            "Creating mpv instance (vo=%s, wid=%s)", kwargs.get("vo", "auto"), self._wid
+        )
         self._mpv = mpv.MPV(**kwargs)
 
-        @self._mpv.property_observer("duration")
+        # Register property observers — keep strong references to prevent GC
+        # while mpv's event thread may still invoke them.
         def _on_duration(_name: str, value: Any) -> None:
             if value is not None:
                 with self._lock:
                     self._duration = float(value)  # type: ignore[arg-type]
 
-        @self._mpv.property_observer("time-pos")
         def _on_time_pos(_name: str, value: Any) -> None:
             if value is not None:
                 with self._lock:
                     self._current_pos = float(value)  # type: ignore[arg-type]
 
-        @self._mpv.property_observer("pause")
         def _on_pause(_name: str, value: Any) -> None:
             if value is not None:
                 self._paused = bool(value)
+
+        self._mpv.property_observer("duration")(_on_duration)
+        self._mpv.property_observer("time-pos")(_on_time_pos)
+        self._mpv.property_observer("pause")(_on_pause)
+
+        # Prevent GC of closures while mpv is alive
+        self._property_refs = [_on_duration, _on_time_pos, _on_pause]
 
     def init_with_wid(self, wid: int) -> None:
         """Bind mpv to a native widget handle (lazy init)."""
@@ -81,13 +94,18 @@ class Player:
         try:
             self._mpv.play(str(path))
         except Exception:
+            logger.exception("mpv.play() failed for %s", path)
             return False
-        self._mpv.pause = "yes"
-        self._paused = bool(self._mpv.pause) if self._mpv is not None else True
+        try:
+            self._mpv.pause = "yes"
+        except Exception:
+            logger.exception("Failed to set initial pause state")
+        m = self._mpv
+        self._paused = bool(m.pause) if m is not None else True
         return True
 
     def toggle_pause(self) -> None:
-        """Toggle play/pause."""
+        """Toggle play / pause."""
         if self._mpv is None:
             return
         new_state = not self._paused
@@ -111,5 +129,6 @@ class Player:
     def shutdown(self) -> None:
         """Clean up mpv instance."""
         if self._mpv is not None:
+            self._property_refs.clear()
             self._mpv.terminate()
             self._mpv = None

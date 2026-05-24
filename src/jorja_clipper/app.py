@@ -1,11 +1,15 @@
 """Main application entry point."""
 
 import contextlib
+import faulthandler
 import locale
 import logging
 import logging.handlers
 import sys
 from pathlib import Path
+
+# Enable faulthandler early — prints native traceback on SIGSEGV/SIGABRT
+faulthandler.enable()
 
 # Fix libmpv locale crash on Unix-like platforms — must run before any mpv/Qt imports
 if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
@@ -89,14 +93,23 @@ def main() -> None:
     window = MainWindow(controller, theme_manager)
     window.show()
 
-    # If a video file was passed as argument, load it
+    # Defer CLI-arg video loading until after the first event-loop tick so
+    # the native widget (NSView on macOS) is fully realised before mpv
+    # binds its render context.  Loading immediately after show() can
+    # segfault because the backing CALayer may not exist yet.
     if video_args:
         video_path = Path(video_args[0])
-        if video_path.is_file():
-            controller.open_file(video_path)
-        else:
-            logger.warning("Argument path not found: %s", video_path)
-            window.set_status(f"File not found: {video_path.name}")
+
+        def _deferred_load() -> None:
+            if video_path.is_file():
+                controller.open_file(video_path)
+            else:
+                logger.warning("Argument path not found: %s", video_path)
+                window.set_status(f"File not found: {video_path.name}")
+
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(100, _deferred_load)
 
     logger.info("Entering Qt event loop")
     sys.exit(app.exec())
