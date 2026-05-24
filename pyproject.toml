@@ -57,6 +57,9 @@ path = "src/jorja_clipper/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/jorja_clipper"]
 
+[tool.ruff]
+exclude = ["packaging/*.spec", "packaging/common.py"]
+
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]
 ignore = ["D100", "D102", "D104", "D107", "D203", "D212", "N802"]

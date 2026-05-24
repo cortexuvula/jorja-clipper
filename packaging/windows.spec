@@ -3,7 +3,9 @@
 
 import glob
 import os
+import sys
 
+sys.path.insert(0, os.path.dirname(__file__))
 from common import make_analysis, make_exe, make_pyz
 
 # Find mpv DLLs — installed by `choco install mpv`
