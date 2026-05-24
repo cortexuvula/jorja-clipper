@@ -1,6 +1,5 @@
 """Tests for the clip engine."""
 
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -93,7 +92,6 @@ def test_clipper_save_calls_ffmpeg(mock_run):
 def test_clipper_save_handles_ffmpeg_failure(mock_run):
     """save_clip returns failure result when ffmpeg exits non-zero."""
     mock_run.return_value = MagicMock(returncode=1, stderr="error")
-    mock_run.side_effect = subprocess.CalledProcessError(1, "ffmpeg", stderr="error")
     c = Clipper()
     result = c.save_clip(
         video_path=Path("/tmp/game.mp4"),

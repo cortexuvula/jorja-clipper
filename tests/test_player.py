@@ -1,6 +1,7 @@
 """Tests for the player wrapper."""
 
 from unittest.mock import MagicMock, patch
+import threading
 
 from jorja_clipper.player import Player
 
@@ -12,6 +13,7 @@ def test_player_initial_state():
     p._duration = 0.0
     p._current_pos = 0.0
     p._paused = True
+    p._lock = threading.Lock()
     assert p.duration == 0.0
     assert p.current_pos == 0.0
     assert p.paused is True

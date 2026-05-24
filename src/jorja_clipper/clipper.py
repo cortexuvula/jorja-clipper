@@ -65,10 +65,10 @@ class Clipper:
         cmd = [
             "ffmpeg",
             "-y",
-            "-ss",
-            str(start),
             "-i",
             str(video_path),
+            "-ss",
+            str(start),
             "-t",
             str(duration),
             "-c",
@@ -98,6 +98,14 @@ class Clipper:
                 end_time=end,
                 success=False,
                 error=result.stderr,
+            )
+        except subprocess.TimeoutExpired:
+            return ClipResult(
+                path="",
+                start_time=start,
+                end_time=end,
+                success=False,
+                error="Clip extraction timed out (ffmpeg took longer than 30 s)",
             )
         except Exception as e:
             return ClipResult(

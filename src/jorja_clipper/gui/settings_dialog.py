@@ -6,9 +6,13 @@ from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
+    QHBoxLayout,
     QKeySequenceEdit,
     QLabel,
+    QLineEdit,
+    QPushButton,
     QVBoxLayout,
 )
 
@@ -45,6 +49,17 @@ class SettingsDialog(QDialog):
         self._key_clip.setKeySequence(QKeySequence(self._settings.clip_key))
         form.addRow("Clip key:", self._key_clip)
 
+        # Output directory
+        self._output_dir = QLineEdit()
+        self._output_dir.setText(self._settings.output_dir)
+        self._output_dir.setPlaceholderText("Default: clips/ next to video")
+        browse_btn = QPushButton("Browse...")
+        browse_btn.clicked.connect(self._browse_output_dir)
+        output_dir_layout = QHBoxLayout()
+        output_dir_layout.addWidget(self._output_dir)
+        output_dir_layout.addWidget(browse_btn)
+        form.addRow("Output directory:", output_dir_layout)
+
         layout.addLayout(form)
 
         self._buttons = QDialogButtonBox(
@@ -59,11 +74,20 @@ class SettingsDialog(QDialog):
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._status)
 
+    def _browse_output_dir(self):
+        """Open a folder dialog to select output directory."""
+        path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+        if path:
+            self._output_dir.setText(path)
+
     def _on_save(self):
+        key = self._key_clip.keySequence().toString()
+        if not key:
+            self._status.setText("Clip key cannot be empty.")
+            return
         self._settings.buffer_before = self._spin_before.value()
         self._settings.buffer_after = self._spin_after.value()
-        key = self._key_clip.keySequence().toString()
-        if key:
-            self._settings.clip_key = key.split(",")[0].strip()
+        self._settings.clip_key = key.split(",")[0].strip()
+        self._settings.output_dir = self._output_dir.text().strip()
         self._settings.save()
         self.accept()

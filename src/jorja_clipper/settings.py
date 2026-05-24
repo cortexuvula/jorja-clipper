@@ -32,9 +32,9 @@ class Settings:
             return
         try:
             data = json.loads(self.config_path.read_text())
-            self.buffer_before = data.get("buffer_before", self.buffer_before)
-            self.buffer_after = data.get("buffer_after", self.buffer_after)
+            self.buffer_before = float(data.get("buffer_before", self.buffer_before))
+            self.buffer_after = float(data.get("buffer_after", self.buffer_after))
             self.clip_key = data.get("clip_key", self.clip_key)
             self.output_dir = data.get("output_dir", self.output_dir)
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError, UnicodeDecodeError, OSError):
             pass  # Use defaults on corrupt file
