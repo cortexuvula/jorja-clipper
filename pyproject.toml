@@ -58,7 +58,7 @@ path = "src/jorja_clipper/__init__.py"
 packages = ["src/jorja_clipper"]
 
 [tool.ruff]
-exclude = ["packaging/*.spec", "packaging/common.py"]
+exclude = ["packaging/*.spec"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "D", "UP", "B", "C4", "SIM"]

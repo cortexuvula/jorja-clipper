@@ -3,10 +3,6 @@
 
 import glob
 import os
-import sys
-
-sys.path.insert(0, SPECPATH)
-from common import make_analysis, make_exe, make_pyz
 
 # Find libmpv.dylib — installed by `brew install mpv`
 _mpv_libs = []
@@ -22,11 +18,47 @@ for lib in sorted(set(_mpv_libs)):
     if real not in [b[0] for b in _binaries]:
         _binaries.append((real, os.path.basename(lib)))
 
-a = make_analysis("../src/jorja_clipper/app.py", binaries=_binaries)
+SCRIPT = os.path.join(SPECPATH, "..", "src", "jorja_clipper", "app.py")
+HOOK = os.path.join(SPECPATH, "runtime_hook_mpv.py")
 
-pyz = make_pyz(a)
+a = Analysis(
+    [SCRIPT],
+    pathex=[],
+    binaries=_binaries,
+    datas=[],
+    hiddenimports=["mpv"],
+    hookspath=[],
+    runtime_hooks=[HOOK],
+    hooksconfig={},
+    excludes=[],
+    noarchive=False,
+)
 
-exe, coll = make_exe(pyz, a, icon=None, console=False, collect=True)
+pyz = PYZ(a.pure)
+
+exe = EXE(
+    pyz,
+    a.scripts,
+    [],
+    exclude_binaries=True,
+    name="jorja-clipper",
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    console=False,
+    disable_windowed_traceback=False,
+    icon=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name="jorja-clipper",
+)
 
 app = BUNDLE(
     coll,
