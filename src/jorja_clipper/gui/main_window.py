@@ -33,9 +33,13 @@ def _remove_wm_decorations(window: QMainWindow) -> None:
     Qt already draws client-side decorations (CSD), so the WM's frame
     is redundant and causes the double-title-bar bug on GNOME/KDE.
     Uses the _MOTIF_WM_HINTS X11 property which most WMs honour.
-    On Wayland this is a safe no-op — XOpenDisplay returns None.
     """
     if sys.platform != "linux":
+        return
+    # On Wayland, winId() is a surface ID — X11 calls would crash.
+    from PySide6.QtGui import QGuiApplication
+
+    if QGuiApplication.platformName() != "xcb":
         return
     try:
         import ctypes
@@ -44,7 +48,7 @@ def _remove_wm_decorations(window: QMainWindow) -> None:
         xlib = ctypes.CDLL(ctypes.util.find_library("X11"))
         display = xlib.XOpenDisplay(None)
         if display is None:
-            return  # Wayland or no X11 — nothing to do
+            return
         w_id = int(window.winId())
         # Motif WmHints: flags, functions, decorations, input_mode, status
         # flags=2 (MWM_HINT_DECORATIONS), decorations=0 → no WM decorations
@@ -56,7 +60,7 @@ def _remove_wm_decorations(window: QMainWindow) -> None:
         xlib.XFlush(display)
         xlib.XCloseDisplay(display)
     except Exception:
-        pass  # Worst case: no fix, still usable
+        pass
 
 
 class MainWindow(QMainWindow):
