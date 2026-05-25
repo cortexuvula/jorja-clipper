@@ -83,7 +83,9 @@ def test_clipper_save_calls_ffmpeg(mock_run):
     assert result.success is True
     args = mock_run.call_args[0][0]
     # Check that the command is ffmpeg (could be full path or just "ffmpeg")
-    assert args[0].endswith("ffmpeg") or args[0] == "ffmpeg"
+    # Case-insensitive check to handle Windows paths like "ffmpeg.EXE"
+    ffmpeg_cmd = args[0].lower()
+    assert ffmpeg_cmd.endswith("ffmpeg") or ffmpeg_cmd.endswith("ffmpeg.exe") or ffmpeg_cmd == "ffmpeg"
     assert "-ss" in args
     assert "-c" in args
     assert "copy" in args
