@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pyinstaller>=6.0,<7.0`
 - Split `pyproject.toml` dev extras into `dev` and `packaging` groups.
 
+## [0.2.16] - 2026-05-25
+
+### Fixed
+- **macOS launch failure (root cause)**: PyInstaller creates Qt and Python binaries in two places:
+  flat binaries at `/Contents/Frameworks/X` and framework bundles at
+  `/Contents/Frameworks/PySide6/Qt/lib/X.framework`. The flat binaries get signed as standalone
+  Mach-O files (without Info.plist binding), causing `dlopen` to reject them at runtime with
+  "code signature invalid". Fix: replace flat binaries with symlinks to the framework versions,
+  so `dlopen` follows the symlink and loads the binary from inside the framework where the
+  signature IS valid (Info.plist bound).
+- **CLI video loading bug**: When launching with a video path argument (`jorja-clipper game.mp4`),
+  `controller.open_file()` was called but not `window.load_video()`, leaving the status bar at
+  "No video loaded" and window title at "Jorja Clipper". Now calls both.
+
 ## [0.2.10] - 2026-05-25
 
 ### Fixed

@@ -100,7 +100,11 @@ def main() -> None:
 
         def _deferred_load() -> None:
             if video_path.is_file():
-                controller.open_file(video_path)
+                if controller.open_file(video_path):
+                    # Also update the window title and status bar so the UI
+                    # reflects the loaded video. Without this, the title bar
+                    # and status remain at their defaults.
+                    window.load_video(video_path)
             else:
                 logger.warning("Argument path not found: %s", video_path)
                 window.set_status(f"File not found: {video_path.name}")

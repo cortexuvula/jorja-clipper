@@ -137,29 +137,82 @@ jobs:
           fi
           APP="dist/Jorja Clipper.app"
 
-          # Remove PyInstaller's Python.framework — its structure conflicts
-          # with codesign. The bootloader can use the flat Python binary instead.
-          FW="$APP/Contents/Frameworks/Python.framework"
-          if [ -d "$FW" ]; then
-            echo "Removing Python.framework (using flat Python binary instead)"
-            rm -rf "$FW"
+          # ---------------------------------------------------------------
+          # PHASE 1: Fix PyInstaller's duplicate binary structure
+          # ---------------------------------------------------------------
+          # PyInstaller creates BOTH:
+          #   - Flat binaries at /Contents/Frameworks/X (e.g. QtWidgets, Python)
+          #   - Framework bundles at /Contents/Frameworks/PySide6/Qt/lib/X.framework
+          # The flat binaries get signed WITHOUT Info.plist binding (because
+          # codesign treats them as standalone Mach-O files), causing dlopen
+          # to reject them with "code signature invalid" at runtime.
+          #
+          # Fix: Replace flat binaries with symlinks to the framework versions.
+          # When dlopen follows the symlink, it loads the binary from INSIDE
+          # the framework, where the signature IS valid (Info.plist bound).
+          # ---------------------------------------------------------------
+
+          FW_DIR="$APP/Contents/Frameworks"
+          PYSIDE_FW_DIR="$FW_DIR/PySide6/Qt/lib"
+
+          # Replace Python flat binary with symlink to Python.framework
+          if [ -f "$FW_DIR/Python" ] && [ ! -L "$FW_DIR/Python" ] && \
+             [ -f "$FW_DIR/Python.framework/Versions/Current/Python" ]; then
+            echo "Replacing Python flat binary with symlink to Python.framework"
+            rm -f "$FW_DIR/Python"
+            ln -s "Python.framework/Versions/Current/Python" "$FW_DIR/Python"
           fi
 
-          # Sign every Mach-O binary in the bundle — use `file` to detect
-          # all Mach-O files, not just those with .dylib/.so extensions.
+          # Replace Qt flat binaries with symlinks to PySide6/Qt/lib/*.framework
+          for flat in "$FW_DIR"/Qt*; do
+            [ -f "$flat" ] && [ ! -L "$flat" ] || continue
+            name=$(basename "$flat")
+            fw_target="$PYSIDE_FW_DIR/$name.framework/Versions/Current/$name"
+            if [ -f "$fw_target" ]; then
+              echo "Replacing $name flat binary with symlink to $name.framework"
+              rm -f "$flat"
+              ln -s "PySide6/Qt/lib/$name.framework/Versions/Current/$name" "$flat"
+            else
+              echo "Warning: no framework version found for $name"
+            fi
+          done
+
+          # ---------------------------------------------------------------
+          # PHASE 2: Sign everything in correct order (inside-out)
+          # ---------------------------------------------------------------
+
+          # Sign Mach-O binaries inside .framework bundles first
+          find "$APP" -name "*.framework" -type d | while read -r fw; do
+            find "$fw" -type f | while read -r f; do
+              if file -b "$f" | grep -q "Mach-O"; then
+                codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
+              fi
+            done
+            # Sign the framework bundle itself
+            codesign --sign "$IDENTITY" --timestamp --force --options runtime "$fw"
+          done
+
+          # Sign all other Mach-O binaries (skipping symlinks, which point to
+          # already-signed framework binaries)
           find "$APP" -type f | while read -r f; do
+            # Skip files inside .framework bundles (already signed above)
+            case "$f" in *.framework/*) continue ;; esac
             if file -b "$f" | grep -q "Mach-O"; then
               codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
             fi
           done
 
-          # Sign the main app bundle
+          # Sign the main app bundle with entitlements (MUST be last)
           codesign --sign "$IDENTITY" --timestamp --force --options runtime \
             --entitlements packaging/macos.entitlements.plist "$APP"
 
-          # Verify the signature
-          codesign --verify --deep --strict "$APP" 2>&1 || echo "Warning: codesign verification failed"
-          echo "Signed."
+          echo "=== Signing complete, running verification ==="
+          if codesign --verify --deep --strict "$APP" 2>&1; then
+            echo "✓ Signature verification PASSED"
+          else
+            echo "::error::Signature verification FAILED"
+            exit 1
+          fi
 
       - name: "[macOS] Zip for notarization"
         if: runner.os == 'macOS'
