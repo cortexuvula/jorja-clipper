@@ -13,6 +13,13 @@ if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
     with contextlib.suppress(locale.Error):
         locale.setlocale(locale.LC_NUMERIC, "C")
 
+# Prevent double title bar on Linux Wayland: disable Qt's client-side
+# decorations so the compositor's own title bar is used instead.
+if sys.platform == "linux":
+    import os
+
+    os.environ.setdefault("QT_WAYLAND_CSD", "0")
+
 from PySide6.QtWidgets import QApplication
 
 from jorja_clipper.clipper import Clipper

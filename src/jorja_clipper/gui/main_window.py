@@ -1,5 +1,6 @@
 """Main application window."""
 
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QModelIndex, Qt, QUrl
@@ -26,6 +27,37 @@ from jorja_clipper.worker import ClipWorker
 __all__ = ["MainWindow"]
 
 
+def _remove_wm_decorations(window: QMainWindow) -> None:
+    """On Linux, tell the WM to skip its own title bar (SSD).
+
+    Qt already draws client-side decorations (CSD), so the WM's frame
+    is redundant and causes the double-title-bar bug on GNOME/KDE.
+    Uses the _MOTIF_WM_HINTS X11 property which most WMs honour.
+    """
+    if sys.platform != "linux":
+        return
+    try:
+        import ctypes
+        import ctypes.util
+
+        xlib = ctypes.CDLL(ctypes.util.find_library("X11"))
+        display = xlib.XOpenDisplay(None)
+        if display is None:
+            return
+        w_id = int(window.winId())
+        # Motif WmHints: flags, functions, decorations, input_mode, status
+        # flags=2 (MWM_HINT_DECORATIONS), decorations=0 → no WM decorations
+        hints = (ctypes.c_ulong * 5)(2, 0, 0, 0, 0)
+        atom = xlib.XInternAtom(display, b"_MOTIF_WM_HINTS", False)
+        xlib.XChangeProperty(
+            display, w_id, atom, atom, 32, 0, ctypes.cast(hints, ctypes.c_char_p), 5
+        )
+        xlib.XFlush(display)
+        xlib.XCloseDisplay(display)
+    except Exception:
+        pass  # Worst case: no fix, still usable
+
+
 class MainWindow(QMainWindow):
     """Main Jorja Clipper window."""
 
@@ -37,6 +69,7 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Jorja Clipper")
         self.setMinimumSize(1200, 700)
+        _remove_wm_decorations(self)
         self._apply_theme()
 
         self._setup_ui()
