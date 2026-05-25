@@ -8,6 +8,7 @@ On Linux/Windows, uses the standard --wid embedding which still works on
 those platforms (X11 Window ID / HWND).
 """
 
+import contextlib
 import ctypes
 import logging
 import sys
@@ -15,7 +16,7 @@ from ctypes import CFUNCTYPE, c_char_p, c_void_p
 from typing import Any
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QOpenGLContext, QShowEvent
+from PySide6.QtGui import QCloseEvent, QShowEvent
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtWidgets import QWidget
 
@@ -94,8 +95,8 @@ class _RenderVideoWidget(QOpenGLWidget):
                 return ctypes.cast(bytes(ptr), ctypes.c_void_p).value or 0
             return int(ptr) if ptr else 0
 
-        _GlGetProcFn = CFUNCTYPE(c_void_p, c_void_p, c_char_p)
-        _get_proc_address = _GlGetProcFn(_get_proc_address_raw)
+        _gl_get_proc_fn = CFUNCTYPE(c_void_p, c_void_p, c_char_p)
+        _get_proc_address = _gl_get_proc_fn(_get_proc_address_raw)
         # Keep a strong reference to prevent GC of the CFUNCTYPE wrapper
         self._gl_get_proc_address = _get_proc_address
 
@@ -134,7 +135,7 @@ class _RenderVideoWidget(QOpenGLWidget):
         logger.debug("VideoWidget resized to %dx%d (GL)", w, h)
 
     def _on_mpv_update(self) -> None:
-        """mpv callback — runs on mpv's thread. Signal bridges to Qt main."""
+        """Mpv callback — runs on mpv's thread. Signal bridges to Qt main."""
         self._bridge.needs_update.emit()
 
     # -- cleanup ------------------------------------------------------------
@@ -146,14 +147,10 @@ class _RenderVideoWidget(QOpenGLWidget):
         exists, so MainWindow must call this before controller.shutdown().
         """
         if self._render_ctx is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self._bridge.needs_update.disconnect()
-            except Exception:
-                pass
-            try:
+            with contextlib.suppress(Exception):
                 self._render_ctx.update_cb = None
-            except Exception:
-                pass
             try:
                 self._render_ctx.free()
                 logger.info("mpv render context freed")
