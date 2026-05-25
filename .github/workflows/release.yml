@@ -137,58 +137,29 @@ jobs:
           fi
           APP="dist/Jorja Clipper.app"
 
-          # Create standalone Python binary for PyInstaller bootloader
-          # The bootloader expects /Contents/Frameworks/Python but PyInstaller
-          # creates it as a symlink to Python.framework/Python
-          if [ -e "$APP/Contents/Frameworks/Python" ]; then
-            echo "Replacing Python symlink with actual binary for bootloader"
-            # Remove the symlink
-            rm -f "$APP/Contents/Frameworks/Python"
-            # Copy the actual binary from the framework
-            cp "$APP/Contents/Frameworks/Python.framework/Versions/Current/Python" \
-               "$APP/Contents/Frameworks/Python"
+          # Remove PyInstaller's Python.framework — its structure conflicts
+          # with codesign. The bootloader can use the flat Python binary instead.
+          FW="$APP/Contents/Frameworks/Python.framework"
+          if [ -d "$FW" ]; then
+            echo "Removing Python.framework (using flat Python binary instead)"
+            rm -rf "$FW"
           fi
 
-          # Remove standalone Qt binaries at the top level of Frameworks
-          # PyInstaller creates duplicates of framework binaries which cause
-          # signature validation issues
-          echo "Removing standalone Qt binaries (using .framework versions instead)"
-          find "$APP/Contents/Frameworks" -maxdepth 1 -name "Qt*" -type f -delete || true
-
-          # Sign framework internals first (inside-out)
-          find "$APP/Contents/Frameworks" -name "*.framework" -type d | while read -r fw; do
-            # Sign all Mach-O files inside the framework
-            find "$fw" -type f | while read -r f; do
-              if file -b "$f" | grep -q "Mach-O"; then
-                codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
-              fi
-            done
-            # Sign the framework itself
-            codesign --sign "$IDENTITY" --timestamp --force --options runtime "$fw"
-          done
-
-          # Sign the standalone Python binary (bootloader requires it)
-          if [ -f "$APP/Contents/Frameworks/Python" ]; then
-            echo "Signing standalone Python binary for bootloader"
-            codesign --sign "$IDENTITY" --timestamp --force --options runtime \
-              "$APP/Contents/Frameworks/Python"
-          fi
-
-          # Sign all other Mach-O binaries in the bundle
+          # Sign every Mach-O binary in the bundle — use `file` to detect
+          # all Mach-O files, not just those with .dylib/.so extensions.
           find "$APP" -type f | while read -r f; do
             if file -b "$f" | grep -q "Mach-O"; then
-              # Skip already-signed framework contents
-              if [[ "$f" != *"/Frameworks/"*".framework/"* ]] && [[ "$f" != *"/Frameworks/Python" ]]; then
-                codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
-              fi
+              codesign --sign "$IDENTITY" --timestamp --force --options runtime "$f"
             fi
           done
-          # Sign the main executable
+
+          # Sign the main app bundle
           codesign --sign "$IDENTITY" --timestamp --force --options runtime \
-            --entitlements packaging/macos.entitlements.plist \
-            "$APP"
+            --entitlements packaging/macos.entitlements.plist "$APP"
+
+          # Verify the signature
+          codesign --verify --deep --strict "$APP" 2>&1 || echo "Warning: codesign verification failed"
           echo "Signed."
-          codesign --verify --deep --strict "$APP" || echo "::warning::codesign verify failed"
 
       - name: "[macOS] Zip for notarization"
         if: runner.os == 'macOS'
