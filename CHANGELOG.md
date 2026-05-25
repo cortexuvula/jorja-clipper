@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pyinstaller>=6.0,<7.0`
 - Split `pyproject.toml` dev extras into `dev` and `packaging` groups.
 
+## [0.2.10] - 2026-05-25
+
+### Fixed
+- **macOS video playback**: Replace broken `--wid` mpv embedding with render API (`MpvRenderContext` + `QOpenGLWidget`). The `--wid` approach no longer works with modern mpv's Swift cocoa-cb backend on macOS, causing videos to not display. Now uses platform-specific implementations: render API on macOS, `--wid` on Linux/Windows.
+- **macOS shutdown crash**: Fix abort in `mp_clients_destroy` by freeing the mpv render context before terminating the mpv instance.
+
 ## [0.1.0] - 2026-05-23
 
 ### Added

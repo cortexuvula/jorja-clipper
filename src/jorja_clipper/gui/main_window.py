@@ -159,9 +159,12 @@ class MainWindow(QMainWindow):
     def _rebuild_theme(self) -> None:
         self._theme_manager.theme_name = self._controller.settings.theme
         self._apply_theme()
-        # Re-apply video widget background
-        t = self._theme_manager.theme
-        self._video_widget.setStyleSheet(f"background-color: {t.video_bg};")
+        # Only apply background to video widget on platforms using --wid
+        # embedding. On macOS (render API / QOpenGLWidget), a stylesheet
+        # background would interfere with GL rendering.
+        if sys.platform != "darwin":
+            t = self._theme_manager.theme
+            self._video_widget.setStyleSheet(f"background-color: {t.video_bg};")
         if self._title_bar is not None:
             self._title_bar.apply_theme(self._theme_manager)
 
@@ -478,6 +481,13 @@ class MainWindow(QMainWindow):
             self.set_status("Clip file not found.")
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
-        """Shut down the player on window close."""
+        """Shut down the player on window close.
+
+        Order matters on macOS: the video widget's render context must be
+        freed BEFORE mpv.terminate(), otherwise mpv aborts in
+        mp_clients_destroy because the render context is still alive.
+        On Linux/Windows this is a no-op.
+        """
+        self._video_widget.shutdown()
         self._controller.shutdown()
         event.accept()

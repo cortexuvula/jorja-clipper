@@ -35,7 +35,8 @@ class Player:
             "osc": False,
         }
         if sys.platform.startswith("darwin"):
-            # macOS: libmpv + NSView via wid option.
+            # macOS: use libmpv render API via MpvRenderContext.
+            # The widget creates the render context after GL init.
             kwargs["vo"] = "libmpv"
         if self._wid is not None:
             kwargs["wid"] = self._wid
@@ -74,8 +75,14 @@ class Player:
         self._property_refs = [_on_duration, _on_time_pos, _on_pause]
 
     def init_with_wid(self, wid: int) -> None:
-        """Bind mpv to a native widget handle (lazy init)."""
+        """Bind mpv to a native widget handle (lazy init). Used on Linux/Windows."""
         self._wid = wid
+
+    @property
+    def mpv_handle(self) -> mpv.MPV | None:
+        """Return the underlying mpv instance (for render context creation)."""
+        self._ensure_mpv()
+        return self._mpv
 
     @property
     def duration(self) -> float:

@@ -98,4 +98,7 @@ def test_video_widget_init(qtbot):
     qtbot.addWidget(parent)
     widget = VideoWidget(player, theme_manager, parent=parent)
     assert widget._player is player
-    assert widget._mpv_initialized is False
+    # On macOS, widget is QOpenGLWidget (render API); on Linux/Windows it's
+    # QWidget (--wid embedding) with an _mpv_initialized flag.
+    if sys.platform != "darwin":
+        assert widget._mpv_initialized is False
