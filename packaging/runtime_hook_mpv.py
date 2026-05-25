@@ -29,6 +29,8 @@ def _patched_find_library(name):
         "mpv-1.dll",
         "mpv-2.dll",
         "libmpv-2.dll",
+        # PyInstaller sometimes creates __dot__ escaped directories
+        "libmpv__dot__2__dot__dylib/libmpv.2.dylib",
     ]
     for candidate in candidates:
         path = os.path.join(bundle_dir, candidate)
