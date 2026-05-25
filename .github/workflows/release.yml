@@ -155,6 +155,16 @@ jobs:
           FW_DIR="$APP/Contents/Frameworks"
           PYSIDE_FW_DIR="$FW_DIR/PySide6/Qt/lib"
 
+          # DEBUG: Show what's actually in the Frameworks directory
+          echo "=== DEBUG: Frameworks directory contents ==="
+          ls -la "$FW_DIR" | grep -E "Python|Qt" | head -20
+          echo "=== DEBUG: Python.framework structure ==="
+          find "$FW_DIR/Python.framework" -type f -o -type l 2>/dev/null | head -10 || echo "Python.framework not found"
+          echo "=== DEBUG: Checking conditions ==="
+          [ -f "$FW_DIR/Python" ] && echo "✓ Python flat binary exists" || echo "✗ Python flat binary missing"
+          [ ! -L "$FW_DIR/Python" ] && echo "✓ Python is not a symlink" || echo "✗ Python is already a symlink"
+          [ -f "$FW_DIR/Python.framework/Versions/Current/Python" ] && echo "✓ Python.framework/Versions/Current/Python exists" || echo "✗ Python.framework/Versions/Current/Python missing"
+
           # Replace Python flat binary with symlink to Python.framework
           if [ -f "$FW_DIR/Python" ] && [ ! -L "$FW_DIR/Python" ] && \
              [ -f "$FW_DIR/Python.framework/Versions/Current/Python" ]; then
