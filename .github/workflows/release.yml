@@ -149,6 +149,12 @@ jobs:
                "$APP/Contents/Frameworks/Python"
           fi
 
+          # Remove standalone Qt binaries at the top level of Frameworks
+          # PyInstaller creates duplicates of framework binaries which cause
+          # signature validation issues
+          echo "Removing standalone Qt binaries (using .framework versions instead)"
+          find "$APP/Contents/Frameworks" -maxdepth 1 -name "Qt*" -type f -delete || true
+
           # Sign framework internals first (inside-out)
           find "$APP/Contents/Frameworks" -name "*.framework" -type d | while read -r fw; do
             # Sign all Mach-O files inside the framework
