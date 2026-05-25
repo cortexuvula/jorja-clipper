@@ -94,7 +94,9 @@ class ClipController:
         if self._current_video is None:
             return
         stored = self._clip_store.get_clips_for_video(str(self._current_video))
-        for sc in reversed(stored):  # oldest first so newest ends up on top
+        # stored is newest-first from DB, so iterate as-is to add newest last
+        # (which puts it at the top of the list view)
+        for sc in stored:
             self._clip_model.add_clip(sc.clip_path, sc.start_time, sc.end_time)
         self._clip_count = self._clip_model.rowCount()
         logger.debug(
@@ -226,12 +228,14 @@ class ClipController:
                 success=False,
                 error="No video loaded",
             )
-        self._clip_count += 1
+        # Use queue length + existing clip count for numbering
+        # Don't increment _clip_count yet - that happens when clip is saved
+        clip_number = self._clip_count + len(self._batch_queue) + 1
         request = ClipRequest(
             video_path=self._current_video,
             current_pos=self._player.current_pos,
             video_duration=self._player.duration,
-            clip_number=self._clip_count,
+            clip_number=clip_number,
         )
         self._batch_queue.enqueue(request)
         logger.info(

@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `pyinstaller>=6.0,<7.0`
 - Split `pyproject.toml` dev extras into `dev` and `packaging` groups.
 
+## [0.2.17] - 2026-05-25
+
+### Fixed
+- **Clip list ordering**: Loaded clips were displayed in reverse order (newest at bottom instead of top). Removed incorrect `reversed()` call in `load_clips_for_current_video()`.
+- **Queue clip count**: `queue_clip()` was incrementing `_clip_count` before the clip was saved, causing incorrect numbering if the queue was cleared. Now calculates clip number based on queue length instead.
+- **Queue error handling**: Logic error in `_on_queue_clip()` - `isinstance(err, object)` was always True. Changed to `err is not None` check.
+- **Thread safety**: Added missing lock around `_paused` updates in `player.py` for consistency with `_duration` and `_current_pos`.
+
 ## [0.2.16] - 2026-05-25
 
 ### Fixed

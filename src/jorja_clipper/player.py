@@ -65,7 +65,8 @@ class Player:
 
         def _on_pause(_name: str, value: Any) -> None:
             if value is not None:
-                self._paused = bool(value)
+                with self._lock:
+                    self._paused = bool(value)
 
         self._mpv.property_observer("duration")(_on_duration)
         self._mpv.property_observer("time-pos")(_on_time_pos)
@@ -99,7 +100,8 @@ class Player:
     @property
     def paused(self) -> bool:
         """Whether playback is paused."""
-        return self._paused
+        with self._lock:
+            return self._paused
 
     def load(self, path: Path) -> bool:
         """Load a video file."""

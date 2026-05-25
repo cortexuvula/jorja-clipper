@@ -391,8 +391,8 @@ class MainWindow(QMainWindow):
     def _on_queue_clip(self) -> None:
         """Add the current position to the batch queue."""
         err = self._controller.queue_clip()
-        if isinstance(err, object) and getattr(err, "success", True) is False:
-            self.set_status(f"Queue failed: {getattr(err, 'error', 'unknown')[:80]}")
+        if err is not None and not err.success:
+            self.set_status(f"Queue failed: {err.error[:80]}")
             return
         total = len(self._controller.batch_queue)
         self.set_status(f"Queued clip at current position ({total} in queue)")
