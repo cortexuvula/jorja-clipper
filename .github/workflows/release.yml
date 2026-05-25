@@ -292,7 +292,8 @@ jobs:
         run: |
           cd dist
           rm -f jorja-clipper-macos.zip
-          zip -r jorja-clipper-macos.zip "Jorja Clipper.app"
+          # Use ditto to preserve symlinks and macOS metadata (critical for signatures)
+          ditto -c -k --sequesterRsrc --keepParent "Jorja Clipper.app" jorja-clipper-macos.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
