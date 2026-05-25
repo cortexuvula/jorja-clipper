@@ -136,6 +136,19 @@ jobs:
             exit 0
           fi
           APP="dist/Jorja Clipper.app"
+
+          # Remove standalone Python binary (PyInstaller creates both a standalone
+          # binary and a framework; the standalone binary lacks Info.plist and fails
+          # signature validation at runtime)
+          if [ -f "$APP/Contents/Frameworks/Python" ]; then
+            echo "Removing standalone Python binary (using Python.framework instead)"
+            rm -f "$APP/Contents/Frameworks/Python"
+          fi
+          if [ -f "$APP/Contents/Resources/Python" ]; then
+            echo "Removing standalone Python binary from Resources"
+            rm -f "$APP/Contents/Resources/Python"
+          fi
+
           # Sign every Mach-O binary in the bundle — use `file` to detect
           # all Mach-O files, not just those with .dylib/.so extensions.
           find "$APP" -type f | while read -r f; do
