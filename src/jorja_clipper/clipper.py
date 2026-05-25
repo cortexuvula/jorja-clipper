@@ -28,7 +28,7 @@ class Clipper:
         self.buffer_after = buffer_after
 
     def _find_ffmpeg(self) -> str | None:
-        """Find ffmpeg binary, checking bundled location first (PyInstaller), then PATH."""
+        """Find ffmpeg: check bundled location first (PyInstaller), then system PATH."""
         import sys
         # Check if running in PyInstaller bundle
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
