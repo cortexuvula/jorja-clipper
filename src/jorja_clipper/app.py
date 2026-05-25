@@ -13,15 +13,6 @@ if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
     with contextlib.suppress(locale.Error):
         locale.setlocale(locale.LC_NUMERIC, "C")
 
-# Prevent double title bar on Linux Wayland: Qt's Wayland platform plugin
-# draws its own client-side decorations (CSD) title bar, but the GNOME
-# compositor also provides a server-side title bar.  Tell Qt to skip its
-# own decorations so only the compositor's frame remains.
-if sys.platform == "linux":
-    import os
-
-    os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
-
 from PySide6.QtWidgets import QApplication
 
 from jorja_clipper.clipper import Clipper

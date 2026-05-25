@@ -3,7 +3,7 @@
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QModelIndex, Qt, QUrl
+from PySide6.QtCore import QModelIndex, QPoint, Qt, QUrl
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -26,41 +26,105 @@ from jorja_clipper.worker import ClipWorker
 
 __all__ = ["MainWindow"]
 
+_USE_CUSTOM_TITLEBAR = sys.platform == "linux"
 
-def _remove_wm_decorations(window: QMainWindow) -> None:
-    """On Linux/X11, tell the WM to skip its own title bar (SSD).
 
-    Qt already draws client-side decorations (CSD), so the WM's frame
-    is redundant and causes the double-title-bar bug on GNOME/KDE.
-    Uses the _MOTIF_WM_HINTS X11 property which most WMs honour.
+class _TitleBar(QWidget):
+    """Minimal custom title bar for frameless Linux windows.
+
+    Provides close / minimise / maximise buttons and drag-to-move.
     """
-    if sys.platform != "linux":
-        return
-    # On Wayland, winId() is a surface ID — X11 calls would crash.
-    from PySide6.QtGui import QGuiApplication
 
-    if QGuiApplication.platformName() != "xcb":
-        return
-    try:
-        import ctypes
-        import ctypes.util
+    def __init__(self, window: QMainWindow, theme: ThemeManager) -> None:
+        super().__init__()
+        self._window = window
+        self._drag_pos: QPoint | None = None
+        self.setFixedHeight(36)
 
-        xlib = ctypes.CDLL(ctypes.util.find_library("X11"))
-        display = xlib.XOpenDisplay(None)
-        if display is None:
-            return
-        w_id = int(window.winId())
-        # Motif WmHints: flags, functions, decorations, input_mode, status
-        # flags=2 (MWM_HINT_DECORATIONS), decorations=0 → no WM decorations
-        hints = (ctypes.c_ulong * 5)(2, 0, 0, 0, 0)
-        atom = xlib.XInternAtom(display, b"_MOTIF_WM_HINTS", False)
-        xlib.XChangeProperty(
-            display, w_id, atom, atom, 32, 0, ctypes.cast(hints, ctypes.c_char_p), 5
+        t = theme.theme
+        self.setStyleSheet(
+            f"background-color: {t.window_bg}; "
+            f"color: {t.window_fg}; "
+            f"font-size: {t.font_small}pt;"
         )
-        xlib.XFlush(display)
-        xlib.XCloseDisplay(display)
-    except Exception:
-        pass
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 0, 6, 0)
+
+        self._title_label = QLabel(window.windowTitle())
+        self._title_label.setStyleSheet(f"color: {t.window_fg};")
+        layout.addWidget(self._title_label)
+        layout.addStretch()
+
+        btn_style = (
+            "QPushButton { border: none; padding: 2px 8px; "
+            f"color: {t.window_fg}; background: transparent; "
+            f"font-size: {t.font_large}pt; }}"
+            f"QPushButton:hover {{ background-color: {t.button_hover_bg}; "
+            f"border-radius: {t.border_radius}px; }}"
+        )
+
+        btn_min = QPushButton("–")
+        btn_min.setStyleSheet(btn_style)
+        btn_min.clicked.connect(window.showMinimized)
+        layout.addWidget(btn_min)
+
+        btn_max = QPushButton("□")
+        btn_max.setStyleSheet(btn_style)
+        btn_max.clicked.connect(self._toggle_maximise)
+        layout.addWidget(btn_max)
+
+        btn_close = QPushButton("×")
+        btn_close.setStyleSheet(
+            btn_style
+            + f"QPushButton:hover {{ background-color: {t.accent}; }}"
+        )
+        btn_close.clicked.connect(window.close)
+        layout.addWidget(btn_close)
+
+    # -- public helpers used by MainWindow ---------------------------------
+
+    def set_title(self, text: str) -> None:
+        """Update the title-bar label."""
+        self._title_label.setText(text)
+
+    def apply_theme(self, theme: ThemeManager) -> None:
+        """Re-style after a theme change."""
+        t = theme.theme
+        self.setStyleSheet(
+            f"background-color: {t.window_bg}; "
+            f"color: {t.window_fg}; "
+            f"font-size: {t.font_small}pt;"
+        )
+        self._title_label.setStyleSheet(f"color: {t.window_fg};")
+
+    # -- dragging & double-click maximise ----------------------------------
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            pos = event.globalPosition().toPoint()
+            self._drag_pos = pos - self._window.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            self._window.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_pos = None
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._toggle_maximise()
+            event.accept()
+
+    def _toggle_maximise(self) -> None:
+        if self._window.isMaximized():
+            self._window.showNormal()
+        else:
+            self._window.showMaximized()
 
 
 class MainWindow(QMainWindow):
@@ -71,12 +135,17 @@ class MainWindow(QMainWindow):
         self._controller = controller
         self._theme_manager = theme_manager
         self._shortcuts: list[QShortcut] = []
+        self._title_bar: _TitleBar | None = None
 
         self.setWindowTitle("Jorja Clipper")
         self.setMinimumSize(1200, 700)
-        _remove_wm_decorations(self)
-        self._apply_theme()
 
+        if _USE_CUSTOM_TITLEBAR:
+            self.setWindowFlags(
+                self.windowFlags() | Qt.WindowType.FramelessWindowHint
+            )
+
+        self._apply_theme()
         self._setup_ui()
         self._setup_shortcuts()
 
@@ -93,6 +162,8 @@ class MainWindow(QMainWindow):
         # Re-apply video widget background
         t = self._theme_manager.theme
         self._video_widget.setStyleSheet(f"background-color: {t.video_bg};")
+        if self._title_bar is not None:
+            self._title_bar.apply_theme(self._theme_manager)
 
     # ------------------------------------------------------------------
     # UI construction
@@ -102,9 +173,20 @@ class MainWindow(QMainWindow):
         """Build the UI layout."""
         from jorja_clipper.gui.video_widget import VideoWidget
 
-        central = QWidget()
-        self.setCentralWidget(central)
-        layout = QHBoxLayout(central)
+        outer = QWidget()
+        self.setCentralWidget(outer)
+        outer_layout = QVBoxLayout(outer)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+        outer_layout.setSpacing(0)
+
+        # Custom title bar on Linux (frameless window)
+        if _USE_CUSTOM_TITLEBAR:
+            self._title_bar = _TitleBar(self, self._theme_manager)
+            outer_layout.addWidget(self._title_bar)
+
+        content = QWidget()
+        outer_layout.addWidget(content)
+        layout = QHBoxLayout(content)
 
         # Splitter: video on left, clip list on right
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -246,7 +328,10 @@ class MainWindow(QMainWindow):
     def load_video(self, video_path: Path) -> None:
         """Notify UI that a video is loaded."""
         self._status.setText(f"Loaded: {video_path.name}")
-        self.setWindowTitle(f"Jorja Clipper — {video_path.name}")
+        title = f"Jorja Clipper — {video_path.name}"
+        self.setWindowTitle(title)
+        if self._title_bar is not None:
+            self._title_bar.set_title(title)
 
     def set_status(self, message: str) -> None:
         """Update the status bar label."""
