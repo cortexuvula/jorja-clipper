@@ -82,18 +82,17 @@ def test_clipper_save_calls_ffmpeg(mock_run):
     )
     assert result.success is True
     args = mock_run.call_args[0][0]
-    assert args[0] == "ffmpeg"
+    # Check that the command is ffmpeg (could be full path or just "ffmpeg")
+    assert args[0].endswith("ffmpeg") or args[0] == "ffmpeg"
     assert "-ss" in args
     assert "-c" in args
     assert "copy" in args
 
 
-@patch("jorja_clipper.clipper.subprocess.run")
-def test_clipper_save_handles_ffmpeg_not_found(mock_run):
+@patch("jorja_clipper.clipper.Clipper._find_ffmpeg")
+def test_clipper_save_handles_ffmpeg_not_found(mock_find):
     """save_clip returns failure result when ffmpeg is not in PATH."""
-    mock_run.side_effect = FileNotFoundError(
-        "[Errno 2] No such file or directory: 'ffmpeg'"
-    )
+    mock_find.return_value = None
     c = Clipper()
     result = c.save_clip(
         video_path=Path("/tmp/game.mp4"),

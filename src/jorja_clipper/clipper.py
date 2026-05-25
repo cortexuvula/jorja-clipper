@@ -27,6 +27,24 @@ class Clipper:
         self.buffer_before = buffer_before
         self.buffer_after = buffer_after
 
+    def _find_ffmpeg(self) -> str | None:
+        """Find ffmpeg binary, checking bundled location first (PyInstaller), then PATH."""
+        import sys
+        # Check if running in PyInstaller bundle
+        if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+            bundle_dir = sys._MEIPASS
+            # Check common locations for bundled ffmpeg
+            for candidate in [
+                Path(bundle_dir) / "ffmpeg",
+                Path(bundle_dir) / "ffmpeg.exe",
+                Path(bundle_dir) / "bin" / "ffmpeg",
+                Path(bundle_dir) / "bin" / "ffmpeg.exe",
+            ]:
+                if candidate.is_file():
+                    return str(candidate)
+        # Fall back to system PATH
+        return shutil.which("ffmpeg")
+
     def calculate_times(
         self, current_pos: float, video_duration: float
     ) -> tuple[float, float]:
@@ -55,7 +73,8 @@ class Clipper:
         clip_number: int,
     ) -> ClipResult:
         """Save a clip using ffmpeg stream-copy (no re-encoding)."""
-        if shutil.which("ffmpeg") is None:
+        ffmpeg_path = self._find_ffmpeg()
+        if ffmpeg_path is None:
             return ClipResult(
                 path="",
                 start_time=0.0,
@@ -76,7 +95,7 @@ class Clipper:
         output_path = self.build_output_path(video_path, clip_number)
 
         cmd = [
-            "ffmpeg",
+            ffmpeg_path,
             "-y",
             "-i",
             str(video_path),
