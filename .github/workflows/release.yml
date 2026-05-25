@@ -139,10 +139,13 @@ jobs:
 
           # Create standalone Python binary for PyInstaller bootloader
           # The bootloader expects /Contents/Frameworks/Python but PyInstaller
-          # creates /Contents/Frameworks/Python.framework/Python
-          if [ -f "$APP/Contents/Frameworks/Python.framework/Python" ]; then
-            echo "Creating standalone Python binary for bootloader"
-            cp "$APP/Contents/Frameworks/Python.framework/Python" \
+          # creates it as a symlink to Python.framework/Python
+          if [ -e "$APP/Contents/Frameworks/Python" ]; then
+            echo "Replacing Python symlink with actual binary for bootloader"
+            # Remove the symlink
+            rm -f "$APP/Contents/Frameworks/Python"
+            # Copy the actual binary from the framework
+            cp "$APP/Contents/Frameworks/Python.framework/Versions/Current/Python" \
                "$APP/Contents/Frameworks/Python"
           fi
 
