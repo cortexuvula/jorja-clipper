@@ -66,76 +66,49 @@ def test_controller_shutdown():
 
 
 def test_controller_shutdown_interrupts_active_worker():
-    """shutdown() must interrupt a running clip worker and wait for it."""
-    player = MagicMock()
-    player.current_pos = 30.0
-    player.duration = 120.0
-
-    clipper = MagicMock()
-    clipper.calculate_times.return_value = (25.0, 35.0)
-    clipper.save_clip.return_value = ClipResult(
-        path="/tmp/clips/game_clip_001.mp4",
-        start_time=25.0,
-        end_time=35.0,
-        success=True,
-    )
-    model = ClipListModel()
-    ctrl = ClipController(player, clipper, MagicMock(), model)
-    ctrl._current_video = Path("/tmp/game.mp4")
-
+    """shutdown() cancels and waits on a running clip worker."""
     from jorja_clipper.worker import ClipWorker
 
-    worker = ctrl.save_clip()
-    assert isinstance(worker, ClipWorker)
+    player = MagicMock()
 
-    # Wait for the worker to actually finish its run() (the mock is fast),
-    # then verify shutdown handles a just-completed worker gracefully.
-    worker.wait(2000)
+    # Build a mock worker that reports itself as still running so that
+    # shutdown() enters the cancellation branch.  We can't use a real
+    # ClipWorker with a blocking save_clip because shutdown() calls
+    # wait(5000) which would deadlock the test thread.
+    worker = MagicMock(spec=ClipWorker)
+    worker.isRunning.return_value = True
+    worker.wait.return_value = True  # thread finished within timeout
+
+    ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
+    ctrl._active_worker = worker
 
     ctrl.shutdown()
+
+    worker.cancel.assert_called_once()
+    worker.requestInterruption.assert_called_once()
+    worker.wait.assert_called_once_with(5000)
     player.shutdown.assert_called_once()
-
-    # The worker should have been waited on (not interrupted since it's done)
-    assert ctrl._active_worker is None or not ctrl._active_worker.isRunning()
-
-    # Cleanup
-    worker.deleteLater()
-    ctrl._active_worker = None
 
 
 def test_controller_shutdown_interrupts_batch_worker():
-    """shutdown() must interrupt a running batch worker and wait for it."""
-    player = MagicMock()
-    player.current_pos = 30.0
-    player.duration = 120.0
-
-    clipper = MagicMock()
-    clipper.calculate_times.return_value = (25.0, 35.0)
-    clipper.save_clip.return_value = ClipResult(
-        path="/tmp/clips/game_clip_001.mp4",
-        start_time=25.0,
-        end_time=35.0,
-        success=True,
-    )
-    model = ClipListModel()
-    ctrl = ClipController(player, clipper, MagicMock(), model)
-    ctrl._current_video = Path("/tmp/game.mp4")
-
+    """shutdown() cancels and waits on a running batch worker."""
     from jorja_clipper.batch_queue import BatchWorker
 
-    ctrl.queue_clip()
-    worker = ctrl.process_batch()
-    assert isinstance(worker, BatchWorker)
+    player = MagicMock()
 
-    # Wait for the worker to finish its run() (mock is fast)
-    worker.wait(2000)
+    worker = MagicMock(spec=BatchWorker)
+    worker.isRunning.return_value = True
+    worker.wait.return_value = True
+
+    ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
+    ctrl._batch_worker = worker
 
     ctrl.shutdown()
-    player.shutdown.assert_called_once()
 
-    # Cleanup
-    worker.deleteLater()
-    ctrl._batch_worker = None
+    worker.cancel.assert_called_once()
+    worker.requestInterruption.assert_called_once()
+    worker.wait.assert_called_once_with(5000)
+    player.shutdown.assert_called_once()
 
 
 def test_controller_shutdown_no_workers():
@@ -143,6 +116,31 @@ def test_controller_shutdown_no_workers():
     player = MagicMock()
     ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
     ctrl.shutdown()
+    player.shutdown.assert_called_once()
+
+
+def test_controller_shutdown_warns_on_worker_timeout(caplog):
+    """shutdown() logs a warning when a worker doesn't finish within 5 s."""
+    import logging
+
+    from jorja_clipper.worker import ClipWorker
+
+    player = MagicMock()
+
+    worker = MagicMock(spec=ClipWorker)
+    worker.isRunning.return_value = True
+    worker.wait.return_value = False  # timeout expired
+
+    ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
+    ctrl._active_worker = worker
+
+    with caplog.at_level(logging.WARNING):
+        ctrl.shutdown()
+
+    assert any(
+        "Clip worker did not finish within 5 s" in record.message
+        for record in caplog.records
+    )
     player.shutdown.assert_called_once()
 
 

@@ -140,13 +140,15 @@ class ClipController(QObject):
             logger.info("Shutdown: interrupting active clip worker")
             self._active_worker.cancel()
             self._active_worker.requestInterruption()
-            self._active_worker.wait(5000)
+            if not self._active_worker.wait(5000):
+                logger.warning("Clip worker did not finish within 5 s during shutdown")
 
         if self._batch_worker is not None and self._batch_worker.isRunning():
             logger.info("Shutdown: interrupting active batch worker")
             self._batch_worker.cancel()
             self._batch_worker.requestInterruption()
-            self._batch_worker.wait(5000)
+            if not self._batch_worker.wait(5000):
+                logger.warning("Batch worker did not finish within 5 s during shutdown")
 
         self._player.shutdown()
 
