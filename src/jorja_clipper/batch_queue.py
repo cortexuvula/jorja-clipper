@@ -66,11 +66,26 @@ class BatchWorker(QThread):
         self._clipper = clipper
         self._queue = queue
         self._results: list[ClipResult] = []
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        """Request cancellation of this batch worker.
+
+        Sets an internal flag checked at the top of each loop iteration
+        and before emitting the final ``finished`` signal.
+        """
+        self._cancelled = True
+
+    def _is_cancelled(self) -> bool:
+        """Check both the custom flag and Qt's interruption request."""
+        return self._cancelled or self.isInterruptionRequested()
 
     def run(self) -> None:
         total = len(self._queue)
         completed = 0
         while True:
+            if self._is_cancelled():
+                break
             request = self._queue.dequeue()
             if request is None:
                 break
@@ -83,4 +98,5 @@ class BatchWorker(QThread):
             self._results.append(result)
             completed += 1
             self.progress.emit(completed, total, result)
-        self.finished.emit(self._results)
+        if not self._is_cancelled():
+            self.finished.emit(self._results)

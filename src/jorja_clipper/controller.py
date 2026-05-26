@@ -129,7 +129,25 @@ class ClipController(QObject):
         self._player.seek(offset)
 
     def shutdown(self) -> None:
-        """Clean up the player on application exit."""
+        """Clean up workers and the player on application exit.
+
+        Interrupts any running clip or batch worker and waits up to 5 s
+        for each to finish before tearing down the player.  This prevents
+        the Qt fatal error "QThread: Destroyed while thread is still
+        running" and avoids orphaned ffmpeg processes.
+        """
+        if self._active_worker is not None and self._active_worker.isRunning():
+            logger.info("Shutdown: interrupting active clip worker")
+            self._active_worker.cancel()
+            self._active_worker.requestInterruption()
+            self._active_worker.wait(5000)
+
+        if self._batch_worker is not None and self._batch_worker.isRunning():
+            logger.info("Shutdown: interrupting active batch worker")
+            self._batch_worker.cancel()
+            self._batch_worker.requestInterruption()
+            self._batch_worker.wait(5000)
+
         self._player.shutdown()
 
     # ------------------------------------------------------------------

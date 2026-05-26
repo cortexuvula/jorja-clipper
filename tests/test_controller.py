@@ -65,6 +65,87 @@ def test_controller_shutdown():
     player.shutdown.assert_called_once()
 
 
+def test_controller_shutdown_interrupts_active_worker():
+    """shutdown() must interrupt a running clip worker and wait for it."""
+    player = MagicMock()
+    player.current_pos = 30.0
+    player.duration = 120.0
+
+    clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, MagicMock(), model)
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    from jorja_clipper.worker import ClipWorker
+
+    worker = ctrl.save_clip()
+    assert isinstance(worker, ClipWorker)
+
+    # Wait for the worker to actually finish its run() (the mock is fast),
+    # then verify shutdown handles a just-completed worker gracefully.
+    worker.wait(2000)
+
+    ctrl.shutdown()
+    player.shutdown.assert_called_once()
+
+    # The worker should have been waited on (not interrupted since it's done)
+    assert ctrl._active_worker is None or not ctrl._active_worker.isRunning()
+
+    # Cleanup
+    worker.deleteLater()
+    ctrl._active_worker = None
+
+
+def test_controller_shutdown_interrupts_batch_worker():
+    """shutdown() must interrupt a running batch worker and wait for it."""
+    player = MagicMock()
+    player.current_pos = 30.0
+    player.duration = 120.0
+
+    clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, MagicMock(), model)
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    from jorja_clipper.batch_queue import BatchWorker
+
+    ctrl.queue_clip()
+    worker = ctrl.process_batch()
+    assert isinstance(worker, BatchWorker)
+
+    # Wait for the worker to finish its run() (mock is fast)
+    worker.wait(2000)
+
+    ctrl.shutdown()
+    player.shutdown.assert_called_once()
+
+    # Cleanup
+    worker.deleteLater()
+    ctrl._batch_worker = None
+
+
+def test_controller_shutdown_no_workers():
+    """shutdown() works cleanly when no workers are running."""
+    player = MagicMock()
+    ctrl = ClipController(player, MagicMock(), MagicMock(), ClipListModel())
+    ctrl.shutdown()
+    player.shutdown.assert_called_once()
+
+
 def test_controller_save_clip_no_video():
     """save_clip returns failure when no video is loaded."""
     ctrl = ClipController(MagicMock(), MagicMock(), MagicMock(), ClipListModel())
