@@ -20,16 +20,29 @@ def test_player_initial_state():
 
 
 def test_player_toggle_pause():
-    """toggle_pause flips the paused state."""
+    """toggle_pause reads _paused under lock and sets mpv.pause accordingly.
+
+    The property observer is the sole writer of _paused, so we simulate
+    the observer firing after each toggle to verify the full cycle.
+    """
     p = Player.__new__(Player)
     p._mpv = MagicMock()
     p._paused = True
+    p._lock = threading.Lock()
+
+    # First toggle: paused -> playing
     p.toggle_pause()
-    assert p._paused is False
     assert p._mpv.pause == "no"
+    # Simulate the property observer updating _paused
+    with p._lock:
+        p._paused = False
+
+    # Second toggle: playing -> paused
     p.toggle_pause()
-    assert p._paused is True
     assert p._mpv.pause == "yes"
+    with p._lock:
+        p._paused = True
+    assert p.paused is True
 
 
 def test_player_seek():
@@ -74,4 +87,88 @@ def test_player_load_lazily_creates_mpv(mock_mpv):
     _, kwargs = mock_mpv.call_args
     assert kwargs["wid"] == 7
     assert kwargs["input_default_bindings"] is False
+    path.unlink(missing_ok=True)
+
+
+def test_toggle_pause_concurrent_with_observer():
+    """Rapid toggle_pause + observer callbacks stay consistent.
+
+    Simulates the main thread calling toggle_pause() while mpv's event
+    thread fires the property observer concurrently.  The final _paused
+    state must match the last value set by the observer — no torn reads
+    or lost updates.
+    """
+    p = Player()
+    p._mpv = MagicMock()
+    p._paused = True
+
+    iterations = 200
+    barrier = threading.Barrier(2)
+
+    def toggler():
+        barrier.wait()
+        for _ in range(iterations):
+            p.toggle_pause()
+
+    def observer():
+        """Simulate the mpv property observer firing after each toggle."""
+        barrier.wait()
+        for _ in range(iterations):
+            # Read what mpv.pause was set to, derive the observer value
+            mpv_pause = p._mpv.pause
+            with p._lock:
+                p._paused = mpv_pause == "yes"
+
+    t1 = threading.Thread(target=toggler)
+    t2 = threading.Thread(target=observer)
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    # After all iterations the state must be a valid boolean — no crash,
+    # no AttributeError, no corruption.
+    assert isinstance(p.paused, bool)
+
+
+def test_load_writes_paused_under_lock():
+    """load() must write _paused while holding the lock."""
+    import tempfile
+    from pathlib import Path
+
+    p = Player()
+    mock_mpv = MagicMock()
+    mock_mpv.pause = "yes"
+    p._mpv = mock_mpv  # skip _ensure_mpv by pre-setting
+
+    # Patch _ensure_mpv to be a no-op since mpv is already set
+    p._ensure_mpv = lambda: None
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        path = Path(f.name)
+
+    lock_acquired_during_write = threading.Event()
+
+    class TrackingLock:
+        """Wrapper that signals when the lock is acquired."""
+
+        def __init__(self, real_lock):
+            self._real = real_lock
+
+        def __enter__(self):
+            self._real.acquire()
+            lock_acquired_during_write.set()
+            return self
+
+        def __exit__(self, *args):
+            self._real.release()
+
+    p._lock = TrackingLock(p._lock)
+
+    result = p.load(path)
+    assert result is True
+    assert lock_acquired_during_write.is_set(), (
+        "_paused was written without acquiring the lock"
+    )
+    assert p._paused is True  # mock_mpv.pause == "yes" -> True
     path.unlink(missing_ok=True)

@@ -116,16 +116,19 @@ class Player:
         except Exception:
             logger.exception("Failed to set initial pause state")
         m = self._mpv
-        self._paused = bool(m.pause) if m is not None else True
+        with self._lock:
+            self._paused = bool(m.pause) if m is not None else True
         return True
 
     def toggle_pause(self) -> None:
         """Toggle play / pause."""
         if self._mpv is None:
             return
-        new_state = not self._paused
+        with self._lock:
+            new_state = not self._paused
         self._mpv.pause = "yes" if new_state else "no"
-        self._paused = new_state
+        # The property observer updates self._paused when mpv acknowledges
+        # the change, so we don't write it here directly.
 
     def seek(self, offset: float) -> None:
         """Seek by relative offset in seconds."""
