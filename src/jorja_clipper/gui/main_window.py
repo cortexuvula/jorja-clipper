@@ -56,32 +56,38 @@ class _TitleBar(QWidget):
         layout.addWidget(self._title_label)
         layout.addStretch()
 
-        btn_style = (
+        btn_style = self._make_button_style(theme)
+
+        self._btn_min = QPushButton("–")
+        self._btn_min.setStyleSheet(btn_style)
+        self._btn_min.clicked.connect(window.showMinimized)
+        layout.addWidget(self._btn_min)
+
+        self._btn_max = QPushButton("□")
+        self._btn_max.setStyleSheet(btn_style)
+        self._btn_max.clicked.connect(self._toggle_maximise)
+        layout.addWidget(self._btn_max)
+
+        self._btn_close = QPushButton("×")
+        self._btn_close.setStyleSheet(
+            btn_style + f"QPushButton:hover {{ background-color: {t.accent}; }}"
+        )
+        self._btn_close.clicked.connect(window.close)
+        layout.addWidget(self._btn_close)
+
+    # -- public helpers used by MainWindow ---------------------------------
+
+    @staticmethod
+    def _make_button_style(theme: ThemeManager) -> str:
+        """Generate button stylesheet for the given theme."""
+        t = theme.theme
+        return (
             "QPushButton { border: none; padding: 2px 8px; "
             f"color: {t.window_fg}; background: transparent; "
             f"font-size: {t.font_large}pt; }}"
             f"QPushButton:hover {{ background-color: {t.button_hover_bg}; "
             f"border-radius: {t.border_radius}px; }}"
         )
-
-        btn_min = QPushButton("–")
-        btn_min.setStyleSheet(btn_style)
-        btn_min.clicked.connect(window.showMinimized)
-        layout.addWidget(btn_min)
-
-        btn_max = QPushButton("□")
-        btn_max.setStyleSheet(btn_style)
-        btn_max.clicked.connect(self._toggle_maximise)
-        layout.addWidget(btn_max)
-
-        btn_close = QPushButton("×")
-        btn_close.setStyleSheet(
-            btn_style + f"QPushButton:hover {{ background-color: {t.accent}; }}"
-        )
-        btn_close.clicked.connect(window.close)
-        layout.addWidget(btn_close)
-
-    # -- public helpers used by MainWindow ---------------------------------
 
     def set_title(self, text: str) -> None:
         """Update the title-bar label."""
@@ -96,6 +102,13 @@ class _TitleBar(QWidget):
             f"font-size: {t.font_small}pt;"
         )
         self._title_label.setStyleSheet(f"color: {t.window_fg};")
+
+        btn_style = self._make_button_style(theme)
+        self._btn_min.setStyleSheet(btn_style)
+        self._btn_max.setStyleSheet(btn_style)
+        self._btn_close.setStyleSheet(
+            btn_style + f"QPushButton:hover {{ background-color: {t.accent}; }}"
+        )
 
     # -- dragging & double-click maximise ----------------------------------
 

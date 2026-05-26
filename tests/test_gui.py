@@ -152,6 +152,56 @@ def test_titlebar_tear_off_from_maximized(qtbot):
 
 
 @_needs_display
+def test_titlebar_buttons_update_on_theme_change(qtbot):
+    """Titlebar buttons should restyle when the theme changes.
+
+    Regression test for Bug 12: _TitleBar.apply_theme() updated the bar's
+    background but not the min/max/close button stylesheets, leaving them
+    with stale colors from the previous theme.
+    """
+    from PySide6.QtWidgets import QMainWindow
+
+    from jorja_clipper.gui.main_window import _TitleBar
+    from jorja_clipper.gui.theme import ThemeManager
+
+    window = QMainWindow()
+    qtbot.addWidget(window)
+
+    theme_manager = ThemeManager("dark")
+    title_bar = _TitleBar(window, theme_manager)
+    window.setCentralWidget(title_bar)
+    window.show()
+
+    # Capture the dark-theme button style
+    dark_btn_style = title_bar._btn_min.styleSheet()
+    dark_close_style = title_bar._btn_close.styleSheet()
+
+    # Dark theme uses window_fg="#e0e0e0" and button_hover_bg="#0f3460"
+    assert "#e0e0e0" in dark_btn_style
+    assert "#0f3460" in dark_btn_style
+
+    # Switch to light theme
+    theme_manager.theme_name = "light"
+    title_bar.apply_theme(theme_manager)
+
+    # Buttons must now reflect light-theme colors
+    light_btn_style = title_bar._btn_min.styleSheet()
+    light_close_style = title_bar._btn_close.styleSheet()
+
+    # Light theme uses window_fg="#1a1a2e" and button_hover_bg="#e0e0e0"
+    assert "#1a1a2e" in light_btn_style
+    assert "#e0e0e0" in light_btn_style
+    assert light_btn_style != dark_btn_style
+
+    # Close button gets the accent hover color
+    assert "#e94560" in light_close_style
+    assert light_close_style != dark_close_style
+
+    # All three buttons should have been updated (max shares style with min)
+    assert title_bar._btn_max.styleSheet() == light_btn_style
+
+
+@_needs_display
 def test_video_widget_init(qtbot):
     """VideoWidget stores player reference."""
     from PySide6.QtWidgets import QWidget
