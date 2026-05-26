@@ -30,9 +30,10 @@ class ClipQueue:
         self._items.append(request)
 
     def dequeue(self) -> ClipRequest | None:
-        if not self._items:
+        try:
+            return self._items.pop(0)
+        except IndexError:
             return None
-        return self._items.pop(0)
 
     def clear(self) -> None:
         self._items.clear()

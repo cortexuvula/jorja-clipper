@@ -140,3 +140,32 @@ def test_batch_worker_emits_progress_and_finished():
     assert progress_calls[0][1] == 1  # total
     assert len(finished_calls) == 1
     assert len(finished_calls[0]) == 1
+
+
+def test_dequeue_returns_none_after_clear():
+    """Smoke test: dequeue() returns None on an empty queue after clear()."""
+    q = ClipQueue()
+    q.enqueue(ClipRequest(Path("/tmp/a.mp4"), 1.0, 10.0, 1))
+    q.clear()
+    assert q.dequeue() is None
+
+
+def test_dequeue_handles_race_with_clear():
+    """dequeue() returns None instead of raising on concurrent clear().
+
+    Simulates a concurrent clear() call between the emptiness check and
+    the pop by using a list subclass whose pop() always raises IndexError.
+    """
+
+    class RacingList(list):
+        """List whose pop() always raises IndexError."""
+
+        def pop(self, index=-1):
+            self.clear()
+            raise IndexError("pop from empty list")
+
+    q = ClipQueue()
+    q._items = RacingList([ClipRequest(Path("/tmp/a.mp4"), 1.0, 10.0, 1)])
+
+    result = q.dequeue()
+    assert result is None
