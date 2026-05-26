@@ -42,6 +42,12 @@ class Settings:
                 suffix=".tmp",
             )
             try:
+                # Preserve original file permissions if it exists
+                if self.config_path.exists():
+                    original_mode = os.stat(self.config_path).st_mode
+                    os.fchmod(fd, original_mode & 0o7777)
+                # else: keep mkstemp's secure 0600 for new files
+
                 with os.fdopen(fd, "w") as f:
                     json.dump(data, f, indent=2)
                 os.replace(tmp_path, self.config_path)

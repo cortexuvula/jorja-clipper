@@ -1,6 +1,7 @@
 """Tests for settings module."""
 
 import json
+import os
 from pathlib import Path
 from unittest.mock import patch
 
@@ -134,3 +135,31 @@ def test_settings_save_atomic_failed_write_preserves_config(tmp_path):
     # No temp files left behind
     leftovers = list(tmp_path.glob(".config_*.tmp"))
     assert leftovers == []
+
+
+def test_settings_save_preserves_permissions(tmp_path):
+    """Saving preserves the original file permissions."""
+    config = tmp_path / "config.json"
+
+    # Create initial config with specific permissions
+    s = Settings(config_path=config)
+    s.save()
+
+    # Set specific permissions (0644: rw-r--r--)
+    config.chmod(0o644)
+    original_mode = config.stat().st_mode & 0o7777
+    assert original_mode == 0o644
+
+    # Save again with different settings
+    s.buffer_before = 15.0
+    s.theme = "light"
+    s.save()
+
+    # Permissions should be preserved
+    new_mode = config.stat().st_mode & 0o7777
+    assert new_mode == 0o644
+
+    # Content should be updated
+    data = json.loads(config.read_text())
+    assert data["buffer_before"] == 15.0
+    assert data["theme"] == "light"
