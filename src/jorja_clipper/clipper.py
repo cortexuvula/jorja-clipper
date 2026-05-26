@@ -131,7 +131,10 @@ class Clipper:
                     success=True,
                 )
             # Clean up partial output on failure
-            output_path.unlink(missing_ok=True)
+            try:
+                output_path.unlink(missing_ok=True)
+            except OSError:
+                pass  # Best-effort cleanup; don't mask the original error
             return ClipResult(
                 path="",
                 start_time=start,
@@ -141,7 +144,10 @@ class Clipper:
             )
         except subprocess.TimeoutExpired:
             if output_path is not None:
-                output_path.unlink(missing_ok=True)
+                try:
+                    output_path.unlink(missing_ok=True)
+                except OSError:
+                    pass  # Best-effort cleanup; file may be locked on Windows
             return ClipResult(
                 path="",
                 start_time=start,
@@ -151,7 +157,10 @@ class Clipper:
             )
         except Exception as e:
             if output_path is not None:
-                output_path.unlink(missing_ok=True)
+                try:
+                    output_path.unlink(missing_ok=True)
+                except OSError:
+                    pass  # Best-effort cleanup; don't mask the original error
             return ClipResult(
                 path="",
                 start_time=start,
