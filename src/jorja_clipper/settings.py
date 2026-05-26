@@ -43,15 +43,18 @@ class Settings:
             )
             try:
                 # Preserve original file permissions if it exists
-                if self.config_path.exists():
+                if self.config_path.exists() and hasattr(os, "fchmod"):
                     original_mode = os.stat(self.config_path).st_mode
                     os.fchmod(fd, original_mode & 0o7777)
                 # else: keep mkstemp's secure 0600 for new files
 
                 with os.fdopen(fd, "w") as f:
+                    fd = -1  # fdopen took ownership
                     json.dump(data, f, indent=2)
                 os.replace(tmp_path, self.config_path)
             except BaseException:
+                if fd >= 0:
+                    os.close(fd)
                 Path(tmp_path).unlink(missing_ok=True)
                 raise
         except OSError as exc:

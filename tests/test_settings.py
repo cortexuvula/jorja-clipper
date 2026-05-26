@@ -1,6 +1,7 @@
 """Tests for settings module."""
 
 import json
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -136,6 +137,9 @@ def test_settings_save_atomic_failed_write_preserves_config(tmp_path):
     assert leftovers == []
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="os.fchmod not available on Windows"
+)
 def test_settings_save_preserves_permissions(tmp_path):
     """Saving preserves the original file permissions."""
     config = tmp_path / "config.json"
