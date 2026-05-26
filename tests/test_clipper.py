@@ -111,6 +111,88 @@ def test_clipper_save_handles_ffmpeg_not_found(mock_find):
     assert "ffmpeg" in result.error.lower() or "no such file" in result.error.lower()
 
 
+@patch("jorja_clipper.clipper.subprocess.run")
+def test_save_clip_cleans_up_partial_file_on_ffmpeg_failure(mock_run, tmp_path):
+    """When ffmpeg exits non-zero, the partial output file is deleted."""
+    mock_run.return_value = MagicMock(returncode=1, stderr="codec error")
+    video = tmp_path / "game.mp4"
+    video.touch()
+    c = Clipper(buffer_before=5.0, buffer_after=5.0)
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert result.path == ""
+    # The clips/ directory may have been created, but the output file must be gone
+    clips_dir = tmp_path / "clips"
+    if clips_dir.exists():
+        assert list(clips_dir.iterdir()) == []
+
+
+@patch("jorja_clipper.clipper.subprocess.run")
+def test_save_clip_cleans_up_when_partial_file_exists(mock_run, tmp_path):
+    """Simulate ffmpeg creating a partial file before failing — it must be removed."""
+    video = tmp_path / "game.mp4"
+    video.touch()
+
+    def fake_run(cmd, **kwargs):
+        # Simulate ffmpeg: create the output file, then exit with error
+        output = Path(cmd[-1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"\x00" * 64)  # partial/corrupt data
+        return MagicMock(
+            returncode=1,
+            stderr="Invalid data found when processing input",
+        )
+
+    mock_run.side_effect = fake_run
+    c = Clipper(buffer_before=5.0, buffer_after=5.0)
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert result.path == ""
+    # Verify the partial file was actually deleted
+    clips_dir = tmp_path / "clips"
+    if clips_dir.exists():
+        assert list(clips_dir.iterdir()) == []
+
+
+@patch("jorja_clipper.clipper.subprocess.run")
+def test_save_clip_cleans_up_on_timeout(mock_run, tmp_path):
+    """When ffmpeg times out, any partial output file is deleted."""
+    video = tmp_path / "game.mp4"
+    video.touch()
+
+    import subprocess as sp
+
+    def fake_run(cmd, **kwargs):
+        output = Path(cmd[-1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"\x00" * 32)
+        raise sp.TimeoutExpired(cmd=cmd, timeout=30)
+
+    mock_run.side_effect = fake_run
+    c = Clipper(buffer_before=5.0, buffer_after=5.0)
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert "timed out" in result.error.lower()
+    clips_dir = tmp_path / "clips"
+    if clips_dir.exists():
+        assert list(clips_dir.iterdir()) == []
+
+
 # ---------------------------------------------------------------------------
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------

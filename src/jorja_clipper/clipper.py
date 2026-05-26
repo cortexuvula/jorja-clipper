@@ -99,6 +99,7 @@ class Clipper:
             )
         duration = end - start
 
+        output_path: Path | None = None
         try:
             output_path = self.build_output_path(video_path, clip_number)
             cmd = [
@@ -129,6 +130,8 @@ class Clipper:
                     end_time=end,
                     success=True,
                 )
+            # Clean up partial output on failure
+            output_path.unlink(missing_ok=True)
             return ClipResult(
                 path="",
                 start_time=start,
@@ -137,6 +140,8 @@ class Clipper:
                 error=result.stderr,
             )
         except subprocess.TimeoutExpired:
+            if output_path is not None:
+                output_path.unlink(missing_ok=True)
             return ClipResult(
                 path="",
                 start_time=start,
@@ -145,6 +150,8 @@ class Clipper:
                 error="Clip extraction timed out (ffmpeg took longer than 30 s)",
             )
         except Exception as e:
+            if output_path is not None:
+                output_path.unlink(missing_ok=True)
             return ClipResult(
                 path="",
                 start_time=start,
