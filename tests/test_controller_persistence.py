@@ -53,7 +53,9 @@ def test_controller_persists_new_clip_on_finish(tmp_path):
         end_time=35.0,
         success=True,
     )
-    ctrl._on_clip_finished(result)
+    worker = MagicMock()
+    ctrl._active_worker = worker
+    ctrl._on_clip_finished(worker, result)
 
     assert store.get_last_clip() is not None
     assert store.get_last_clip().clip_path == str(tmp_path / "out.mp4")
@@ -82,7 +84,9 @@ def test_controller_undo_restores_state(tmp_path):
         end_time=35.0,
         success=True,
     )
-    ctrl._on_clip_finished(result)
+    worker = MagicMock()
+    ctrl._active_worker = worker
+    ctrl._on_clip_finished(worker, result)
     assert ctrl.clip_model.rowCount() == 1
     assert store.get_all_clips()
     assert clip_file.exists()
@@ -107,7 +111,9 @@ def test_controller_undo_updates_clip_count(tmp_path):
         end_time=20.0,
         success=True,
     )
-    ctrl._on_clip_finished(result)
+    worker = MagicMock()
+    ctrl._active_worker = worker
+    ctrl._on_clip_finished(worker, result)
     assert ctrl.clip_count == 1
 
     ctrl.undo_last_clip()
@@ -120,13 +126,16 @@ def test_controller_undo_cannot_double_undo(tmp_path):
     ctrl = _make_controller(tmp_path, clip_store=store)
     ctrl._current_video = Path("/tmp/game.mp4")
 
+    worker = MagicMock()
+    ctrl._active_worker = worker
     ctrl._on_clip_finished(
+        worker,
         ClipResult(
             path=str(tmp_path / "a.mp4"),
             start_time=10.0,
             end_time=20.0,
             success=True,
-        )
+        ),
     )
     ctrl.undo_last_clip()
     assert ctrl.undo_last_clip() is False
@@ -138,21 +147,27 @@ def test_controller_undo_deletes_db_row(tmp_path):
     ctrl = _make_controller(tmp_path, clip_store=store)
     ctrl._current_video = Path("/tmp/game.mp4")
 
+    worker_a = MagicMock()
+    ctrl._active_worker = worker_a
     ctrl._on_clip_finished(
+        worker_a,
         ClipResult(
             path=str(tmp_path / "a.mp4"),
             start_time=10.0,
             end_time=20.0,
             success=True,
-        )
+        ),
     )
+    worker_b = MagicMock()
+    ctrl._active_worker = worker_b
     ctrl._on_clip_finished(
+        worker_b,
         ClipResult(
             path=str(tmp_path / "b.mp4"),
             start_time=30.0,
             end_time=40.0,
             success=True,
-        )
+        ),
     )
     assert len(store.get_all_clips()) == 2
 

@@ -81,6 +81,14 @@ def test_controller_save_clip_success():
 
     clipper = MagicMock()
     clipper.calculate_times.return_value = (25.0, 35.0)
+    # Return a real ClipResult so queued signals from the background
+    # thread don't crash if the event loop delivers them later.
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
     model = ClipListModel()
     ctrl = ClipController(player, clipper, MagicMock(), model)
     ctrl._current_video = Path("/tmp/game.mp4")
@@ -97,7 +105,7 @@ def test_controller_save_clip_success():
         end_time=35.0,
         success=True,
     )
-    ctrl._on_clip_finished(result)
+    ctrl._on_clip_finished(worker, result)
     assert ctrl.clip_count == 1
     assert model.rowCount() == 1
 
@@ -113,6 +121,14 @@ def test_controller_save_clip_rejects_while_running():
 
     # pre-set calculate_times return value so save_clip doesn't break
     ctrl._clipper.calculate_times.return_value = (25.0, 35.0)
+    # Return a real ClipResult so queued signals from the background
+    # thread don't crash if the event loop delivers them later.
+    ctrl._clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
 
     from jorja_clipper.worker import ClipWorker
 
@@ -164,3 +180,181 @@ def test_logging_setup():
     for h in list(root.handlers):
         h.close()
         root.removeHandler(h)
+
+
+# ---------------------------------------------------------------------------
+# Race-condition tests for worker cleanup (Bug 4)
+# ---------------------------------------------------------------------------
+
+
+def test_on_clip_finished_ignores_stale_worker():
+    """A stale worker's signal must not delete the current active worker.
+
+    Simulates the narrow window where:
+    1. Worker A finishes and its signal is queued but not yet delivered.
+    2. User presses hotkey again, creating Worker B (now _active_worker).
+    3. Worker A's signal is delivered — must NOT clean up Worker B.
+    """
+    player = MagicMock()
+    player.current_pos = 30.0
+    player.duration = 120.0
+
+    clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
+    # Return a real ClipResult so queued signals from the background
+    # thread don't crash if the event loop delivers them later.
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, MagicMock(), model)
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    from jorja_clipper.worker import ClipWorker
+
+    # Create "worker A" — the first worker that will finish
+    worker_a = ctrl.save_clip()
+    assert isinstance(worker_a, ClipWorker)
+
+    # Pretend worker A finished: clear _active_worker so save_clip() allows
+    # a second worker (simulating the race window where A's signal is queued
+    # but B hasn't been created yet — in reality is_clipping would still be
+    # true, but we force the scenario for unit testing).
+    ctrl._active_worker = None
+
+    # Create "worker B" — the newer worker that is now active
+    worker_b = ctrl.save_clip()
+    assert isinstance(worker_b, ClipWorker)
+    assert ctrl._active_worker is worker_b
+
+    # Now deliver worker A's (stale) finished signal directly
+    result_a = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    ctrl._on_clip_finished(worker_a, result_a)
+
+    # Worker A's signal should have been processed (clip count incremented)
+    # but _active_worker must still point to worker_b — not cleared.
+    assert ctrl._active_worker is worker_b
+    assert ctrl.clip_count == 1
+
+    # Deliver worker B's legitimate signal
+    result_b = ClipResult(
+        path="/tmp/clips/game_clip_002.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    ctrl._on_clip_finished(worker_b, result_b)
+
+    # Now _active_worker should be cleared and clip_count should be 2
+    assert ctrl._active_worker is None
+    assert ctrl.clip_count == 2
+
+    # Cleanup
+    worker_a.deleteLater()
+
+
+def test_on_clip_finished_rejects_mismatched_worker():
+    """_on_clip_finished must not touch _active_worker when identity differs."""
+    player = MagicMock()
+    player.current_pos = 30.0
+    player.duration = 120.0
+
+    clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
+    # Return a real ClipResult so queued signals from the background
+    # thread don't crash if the event loop delivers them later.
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, MagicMock(), model)
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    from jorja_clipper.worker import ClipWorker
+
+    real_worker = ctrl.save_clip()
+    assert isinstance(real_worker, ClipWorker)
+
+    # Create a different (stale) worker mock
+    stale_worker = MagicMock(spec=ClipWorker)
+
+    result = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    # Call with the stale worker — should process the result but NOT
+    # deleteLater() the real active worker.
+    ctrl._on_clip_finished(stale_worker, result)
+
+    # The real worker must still be the active one and untouched
+    assert ctrl._active_worker is real_worker
+    stale_worker.deleteLater.assert_not_called()
+
+    # Cleanup
+    real_worker.deleteLater()
+    ctrl._active_worker = None
+
+
+def test_on_batch_finished_ignores_stale_worker():
+    """A stale batch worker's signal must not delete the current batch worker."""
+    player = MagicMock()
+    player.current_pos = 30.0
+    player.duration = 120.0
+
+    clipper = MagicMock()
+    clipper.calculate_times.return_value = (25.0, 35.0)
+    # Return a real ClipResult so queued signals from the background
+    # thread don't crash if the event loop delivers them later.
+    clipper.save_clip.return_value = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, MagicMock(), model)
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    from jorja_clipper.batch_queue import BatchWorker
+
+    # Enqueue items for two batches
+    ctrl.queue_clip()
+    ctrl.queue_clip()
+
+    # Start first batch
+    worker_a = ctrl.process_batch()
+    assert isinstance(worker_a, BatchWorker)
+
+    # Force the scenario: pretend worker A's signal is queued, and a new
+    # batch was started in the meantime.
+    ctrl._batch_worker = None
+    ctrl.queue_clip()
+    worker_b = ctrl.process_batch()
+    assert isinstance(worker_b, BatchWorker)
+    assert ctrl._batch_worker is worker_b
+
+    # Deliver worker A's stale signal directly
+    ctrl._on_batch_finished(worker_a, [])
+
+    # worker_b must still be the active batch worker
+    assert ctrl._batch_worker is worker_b
+
+    # Deliver worker B's legitimate signal
+    ctrl._on_batch_finished(worker_b, [])
+    assert ctrl._batch_worker is None
+
+    # Cleanup
+    worker_a.deleteLater()

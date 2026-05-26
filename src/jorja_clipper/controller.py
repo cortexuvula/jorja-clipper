@@ -183,13 +183,22 @@ class ClipController(QObject):
             clip_number=self._clip_count + 1,
             parent=None,
         )
-        worker.finished.connect(self._on_clip_finished)
+        worker.finished.connect(
+            lambda result, w=worker: self._on_clip_finished(w, result)
+        )
         self._active_worker = worker
         worker.start()
         return worker
 
-    def _on_clip_finished(self, result: ClipResult) -> None:
-        """Handle completion of a clip worker thread."""
+    def _on_clip_finished(self, worker: ClipWorker, result: ClipResult) -> None:
+        """Handle completion of a clip worker thread.
+
+        The *worker* parameter is the specific worker that emitted the
+        signal.  We only clean up ``_active_worker`` when it still refers
+        to the same object — this prevents a stale signal from deleting a
+        newer worker that was started in the narrow window between the
+        first worker finishing and its signal being delivered.
+        """
         if result.success:
             self._plugin_loader.broadcast_clip_complete(result)
             self._clip_count += 1
@@ -209,8 +218,8 @@ class ClipController(QObject):
             self._plugin_loader.broadcast_clip_error(result)
             logger.error("Clip failed: %s", result.error)
 
-        if self._active_worker is not None:
-            self._active_worker.deleteLater()
+        if self._active_worker is worker:
+            worker.deleteLater()
             self._active_worker = None
 
     # ------------------------------------------------------------------
@@ -280,7 +289,9 @@ class ClipController(QObject):
             parent=None,
         )
         worker.progress.connect(self._on_batch_progress)
-        worker.finished.connect(self._on_batch_finished)
+        worker.finished.connect(
+            lambda results, w=worker: self._on_batch_finished(w, results)
+        )
         self._batch_worker = worker
         worker.start()
         return worker
@@ -308,12 +319,21 @@ class ClipController(QObject):
                 "Batch progress %d/%d — failed: %s", completed, total, result.error
             )
 
-    def _on_batch_finished(self, results: list[ClipResult]) -> None:
-        """Handle completion of the entire batch queue."""
+    def _on_batch_finished(
+        self, worker: BatchWorker, results: list[ClipResult]
+    ) -> None:
+        """Handle completion of the entire batch queue.
+
+        The *worker* parameter is the specific worker that emitted the
+        signal.  We only clean up ``_batch_worker`` when it still refers
+        to the same object — this prevents a stale signal from deleting a
+        newer worker that was started in the narrow window between the
+        first worker finishing and its signal being delivered.
+        """
         success_count = sum(1 for r in results if r.success)
         logger.info("Batch finished: %d/%d succeeded", success_count, len(results))
-        if self._batch_worker is not None:
-            self._batch_worker.deleteLater()
+        if self._batch_worker is worker:
+            worker.deleteLater()
             self._batch_worker = None
 
     def clear_batch_queue(self) -> None:
