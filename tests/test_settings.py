@@ -1,6 +1,10 @@
 """Tests for settings module."""
 
+import json
 from pathlib import Path
+from unittest.mock import patch
+
+import pytest
 
 from jorja_clipper.settings import Settings
 
@@ -77,3 +81,56 @@ def test_settings_load_non_dict_json_null(tmp_path):
     s.load()
     assert s.buffer_before == 5.0
     assert s.theme == "dark"
+
+
+def test_settings_save_no_temp_files_left(tmp_path):
+    """Saving leaves no temporary files behind."""
+    config = tmp_path / "config.json"
+    s = Settings(config_path=config)
+    s.buffer_before = 7.0
+    s.theme = "light"
+    s.save()
+
+    # Config file has correct content
+    data = json.loads(config.read_text())
+    assert data["buffer_before"] == 7.0
+    assert data["theme"] == "light"
+
+    # No temp files left in the directory
+    leftovers = list(tmp_path.glob(".config_*.tmp"))
+    assert leftovers == []
+
+
+def test_settings_save_atomic_failed_write_preserves_config(tmp_path):
+    """A failed save leaves the existing config intact."""
+    config = tmp_path / "config.json"
+
+    # Write initial valid settings
+    s = Settings(config_path=config)
+    s.buffer_before = 12.0
+    s.theme = "light"
+    s.save()
+
+    original_data = json.loads(config.read_text())
+    assert original_data["buffer_before"] == 12.0
+
+    # Prepare a second save that will fail during the write step
+    s.buffer_before = 99.0
+    s.theme = "broken"
+
+    # Patch json.dump to simulate a write failure (e.g. disk full)
+    with (
+        patch("jorja_clipper.settings.json.dump", side_effect=OSError("disk full")),
+        pytest.raises(RuntimeError, match="Failed to save settings"),
+    ):
+        s.save()
+
+    # Original config is still intact
+    assert config.exists()
+    preserved_data = json.loads(config.read_text())
+    assert preserved_data["buffer_before"] == 12.0
+    assert preserved_data["theme"] == "light"
+
+    # No temp files left behind
+    leftovers = list(tmp_path.glob(".config_*.tmp"))
+    assert leftovers == []

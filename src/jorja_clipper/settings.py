@@ -1,6 +1,8 @@
 """Application settings with JSON persistence."""
 
 import json
+import os
+import tempfile
 from pathlib import Path
 
 __all__ = ["Settings"]
@@ -19,7 +21,12 @@ class Settings:
         self.theme: str = "dark"
 
     def save(self) -> None:
-        """Save settings to JSON file."""
+        """Save settings to JSON file atomically.
+
+        Writes to a temporary file in the same directory, then renames it
+        over the target using os.replace(), which is atomic on POSIX systems.
+        A crash during the write leaves the original config intact.
+        """
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "buffer_before": self.buffer_before,
@@ -29,7 +36,18 @@ class Settings:
             "theme": self.theme,
         }
         try:
-            self.config_path.write_text(json.dumps(data, indent=2))
+            fd, tmp_path = tempfile.mkstemp(
+                dir=self.config_path.parent,
+                prefix=".config_",
+                suffix=".tmp",
+            )
+            try:
+                with os.fdopen(fd, "w") as f:
+                    json.dump(data, f, indent=2)
+                os.replace(tmp_path, self.config_path)
+            except BaseException:
+                Path(tmp_path).unlink(missing_ok=True)
+                raise
         except OSError as exc:
             raise RuntimeError(f"Failed to save settings: {exc}") from exc
 
