@@ -39,6 +39,8 @@ class Settings:
             return
         try:
             data = json.loads(self.config_path.read_text())
+            if not isinstance(data, dict):
+                return  # use defaults
             self.buffer_before = float(data.get("buffer_before", self.buffer_before))
             self.buffer_after = float(data.get("buffer_after", self.buffer_after))
             self.clip_key = data.get("clip_key", self.clip_key)
