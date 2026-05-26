@@ -76,8 +76,7 @@ class _TitleBar(QWidget):
 
         btn_close = QPushButton("×")
         btn_close.setStyleSheet(
-            btn_style
-            + f"QPushButton:hover {{ background-color: {t.accent}; }}"
+            btn_style + f"QPushButton:hover {{ background-color: {t.accent}; }}"
         )
         btn_close.clicked.connect(window.close)
         layout.addWidget(btn_close)
@@ -108,6 +107,19 @@ class _TitleBar(QWidget):
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
         if self._drag_pos is not None and event.buttons() & Qt.MouseButton.LeftButton:
+            if self._window.isMaximized():
+                # "Tear off" from maximized — restore and reposition under
+                # cursor so the window follows the drag in one gesture,
+                # matching native titlebar behaviour on every Linux WM.
+                old_width = self._window.width()
+                self._window.showNormal()
+                # Recalculate drag_pos so the window stays centred under the
+                # cursor proportionally to where the user grabbed the bar.
+                new_width = self._window.width()
+                ratio = event.position().x() / old_width
+                self._drag_pos = QPoint(
+                    int(new_width * ratio), int(event.position().y())
+                )
             self._window.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
 
@@ -141,9 +153,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1200, 700)
 
         if _USE_CUSTOM_TITLEBAR:
-            self.setWindowFlags(
-                self.windowFlags() | Qt.WindowType.FramelessWindowHint
-            )
+            self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
 
         self._apply_theme()
         self._setup_ui()
@@ -309,9 +319,7 @@ class MainWindow(QMainWindow):
                 lambda: self._controller.seek(1.0),
             )
         )
-        self._shortcuts.append(
-            QShortcut(QKeySequence("Q"), self, self._on_queue_clip)
-        )
+        self._shortcuts.append(QShortcut(QKeySequence("Q"), self, self._on_queue_clip))
         self._shortcuts.append(
             QShortcut(QKeySequence("U"), self, self._on_undo_requested)
         )

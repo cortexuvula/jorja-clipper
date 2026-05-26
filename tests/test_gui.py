@@ -85,6 +85,73 @@ def test_settings_dialog_reads_settings(qtbot):
 
 
 @_needs_display
+def test_titlebar_tear_off_from_maximized(qtbot):
+    """Dragging the titlebar while maximized restores the window (tear-off).
+
+    On Linux the app uses a frameless custom titlebar.  Native titlebars
+    "tear off" in one gesture — drag from maximized immediately restores
+    and follows the cursor.  Verify our _TitleBar does the same.
+    """
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtGui import QMouseEvent
+    from PySide6.QtWidgets import QMainWindow
+
+    from jorja_clipper.gui.main_window import _TitleBar
+    from jorja_clipper.gui.theme import ThemeManager
+
+    window = QMainWindow()
+    qtbot.addWidget(window)
+    theme_manager = ThemeManager()
+    title_bar = _TitleBar(window, theme_manager)
+    window.setCentralWidget(title_bar)
+    window.resize(800, 600)
+    window.show()
+
+    # Move to a known position so we can detect a move after tear-off.
+    window.move(50, 50)
+    qtbot.wait(50)
+    normal_top_left = window.frameGeometry().topLeft()
+
+    # Press at the centre of the title bar to begin a drag.
+    press_local = QPoint(title_bar.width() // 2, title_bar.height() // 2)
+    press_global = title_bar.mapToGlobal(press_local)
+    press_event = QMouseEvent(
+        QMouseEvent.Type.MouseButtonPress,
+        press_local,
+        press_global,
+        Qt.MouseButton.LeftButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    title_bar.mousePressEvent(press_event)
+    assert title_bar._drag_pos is not None
+
+    # Maximise the window — simulates the user having double-clicked first.
+    window.showMaximized()
+    qtbot.wait(50)
+    assert window.isMaximized()
+
+    # Drag a little to the right — this must trigger the tear-off.
+    move_local = QPoint(press_local.x() + 40, press_local.y())
+    move_global = title_bar.mapToGlobal(move_local)
+    move_event = QMouseEvent(
+        QMouseEvent.Type.MouseMove,
+        move_local,
+        move_global,
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    title_bar.mouseMoveEvent(move_event)
+
+    # The window must no longer be maximised and must have been moved.
+    assert not window.isMaximized(), "Tear-off should restore the window"
+    assert window.frameGeometry().topLeft() != normal_top_left, (
+        "Tear-off should reposition the window under the cursor"
+    )
+
+
+@_needs_display
 def test_video_widget_init(qtbot):
     """VideoWidget stores player reference."""
     from PySide6.QtWidgets import QWidget
