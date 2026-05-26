@@ -157,6 +157,23 @@ def test_calculate_times_never_raises(current_pos, video_duration):
         raise AssertionError("calculate_times should not raise") from exc
 
 
+@patch("jorja_clipper.clipper.Clipper.build_output_path")
+@patch("jorja_clipper.clipper.Clipper._find_ffmpeg")
+def test_save_clip_catches_oserror_from_build_output_path(mock_find, mock_build):
+    """OSError from build_output_path is caught and returned as a failure result."""
+    mock_find.return_value = "/usr/bin/ffmpeg"
+    mock_build.side_effect = PermissionError("Permission denied: '/tmp/clips'")
+    c = Clipper()
+    result = c.save_clip(
+        video_path=Path("/tmp/game.mp4"),
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert "Permission denied" in result.error
+
+
 @given(
     current_pos=st.floats(min_value=0.0, max_value=1e3),
     buffer_before=st.floats(min_value=1e3, max_value=1e6),

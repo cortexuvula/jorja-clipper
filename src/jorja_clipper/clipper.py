@@ -98,25 +98,24 @@ class Clipper:
                 error="Invalid time range (end <= start)",
             )
         duration = end - start
-        output_path = self.build_output_path(video_path, clip_number)
-
-        cmd = [
-            ffmpeg_path,
-            "-y",
-            "-i",
-            str(video_path),
-            "-ss",
-            str(start),
-            "-t",
-            str(duration),
-            "-c",
-            "copy",
-            "-avoid_negative_ts",
-            "make_zero",
-            str(output_path),
-        ]
 
         try:
+            output_path = self.build_output_path(video_path, clip_number)
+            cmd = [
+                ffmpeg_path,
+                "-y",
+                "-i",
+                str(video_path),
+                "-ss",
+                str(start),
+                "-t",
+                str(duration),
+                "-c",
+                "copy",
+                "-avoid_negative_ts",
+                "make_zero",
+                str(output_path),
+            ]
             result = subprocess.run(
                 cmd,
                 capture_output=True,
