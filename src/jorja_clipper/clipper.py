@@ -32,16 +32,22 @@ class Clipper:
         import sys
         # Check if running in PyInstaller bundle
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-            bundle_dir = sys._MEIPASS
-            # Check common locations for bundled ffmpeg
-            for candidate in [
-                Path(bundle_dir) / "ffmpeg",
-                Path(bundle_dir) / "ffmpeg.exe",
-                Path(bundle_dir) / "bin" / "ffmpeg",
-                Path(bundle_dir) / "bin" / "ffmpeg.exe",
-            ]:
-                if candidate.is_file():
-                    return str(candidate)
+            bundle_dir = Path(sys._MEIPASS)
+            # On macOS .app bundles, also check Frameworks directory
+            # sys._MEIPASS points to Contents/MacOS, but binaries are in Contents/Frameworks
+            search_dirs = [
+                bundle_dir,
+                bundle_dir.parent / "Frameworks",  # macOS .app bundle
+            ]
+            for search_dir in search_dirs:
+                for candidate in [
+                    search_dir / "ffmpeg",
+                    search_dir / "ffmpeg.exe",
+                    search_dir / "bin" / "ffmpeg",
+                    search_dir / "bin" / "ffmpeg.exe",
+                ]:
+                    if candidate.is_file():
+                        return str(candidate)
         # Fall back to system PATH
         return shutil.which("ffmpeg")
 

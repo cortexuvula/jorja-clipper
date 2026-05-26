@@ -19,8 +19,12 @@ for path in [
     "/usr/local/bin/ffmpeg",      # Intel
 ]:
     if os.path.exists(path):
-        _ffmpeg_path = path
+        _ffmpeg_path = os.path.realpath(path)  # Resolve symlinks
+        print(f"Found ffmpeg at: {_ffmpeg_path}")
         break
+
+if not _ffmpeg_path:
+    print("WARNING: ffmpeg not found! Clip extraction will not work.")
 
 # Find ffmpeg dependencies (libav*, libsw*)
 _ffmpeg_libs = []
@@ -42,7 +46,8 @@ for lib in sorted(set(_mpv_libs)):
 
 # Add ffmpeg binary
 if _ffmpeg_path:
-    _binaries.append((_ffmpeg_path, "ffmpeg"))
+    _binaries.append((_ffmpeg_path, "."))  # Use "." to place at root of bundle
+    print(f"Adding ffmpeg binary to bundle: {_ffmpeg_path}")
 
 # Add ffmpeg dependencies
 for lib in sorted(set(_ffmpeg_libs)):

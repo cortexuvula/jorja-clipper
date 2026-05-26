@@ -177,6 +177,16 @@ jobs:
             fi
           done
 
+          # Fix libmpv symlink (points to directory instead of file)
+          if [ -L "$FW_DIR/libmpv.2.dylib" ]; then
+            target=$(readlink "$FW_DIR/libmpv.2.dylib")
+            if [ -d "$FW_DIR/$target" ]; then
+              echo "Fixing libmpv.2.dylib symlink (currently points to directory)"
+              rm -f "$FW_DIR/libmpv.2.dylib"
+              ln -s "$target/libmpv.2.dylib" "$FW_DIR/libmpv.2.dylib"
+            fi
+          fi
+
           # ---------------------------------------------------------------
           # PHASE 2: Sign everything in correct order (inside-out)
           # ---------------------------------------------------------------
