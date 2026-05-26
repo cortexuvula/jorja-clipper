@@ -46,6 +46,14 @@ class ClipListModel(QAbstractListModel):
         self._clips.append(entry)
         self.endInsertRows()
 
+    def clear(self) -> None:
+        """Remove all clips from the model."""
+        if not self._clips:
+            return
+        self.beginResetModel()
+        self._clips.clear()
+        self.endResetModel()
+
     def remove_last(self) -> ClipEntry | None:
         """Remove the most recent clip (last row) and return it."""
         if not self._clips:

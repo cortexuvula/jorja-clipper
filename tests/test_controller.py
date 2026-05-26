@@ -437,3 +437,234 @@ def test_on_batch_finished_ignores_stale_worker():
 
     # Cleanup
     worker_a.deleteLater()
+
+
+# ---------------------------------------------------------------------------
+# Bug 6: Clip list not cleared when opening new video
+# ---------------------------------------------------------------------------
+
+
+def test_open_file_clears_clip_model(tmp_path):
+    """Opening a new video must clear clips from the previous video."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    # Persist clips for two different videos
+    store.add_clip(
+        clip_path="/tmp/clips/a_clip_001.mp4",
+        source_video_path="/tmp/video_a.mp4",
+        start_time=10.0,
+        end_time=20.0,
+    )
+    store.add_clip(
+        clip_path="/tmp/clips/b_clip_001.mp4",
+        source_video_path="/tmp/video_b.mp4",
+        start_time=30.0,
+        end_time=40.0,
+    )
+
+    player = MagicMock()
+    player.load.return_value = True
+    model = ClipListModel()
+    ctrl = ClipController(player, MagicMock(), MagicMock(), model, clip_store=store)
+
+    # Open video A — should load 1 clip
+    ctrl.open_file(Path("/tmp/video_a.mp4"))
+    assert model.rowCount() == 1
+    assert ctrl.clip_count == 1
+
+    # Open video B — should clear video A's clips and load video B's clips
+    ctrl.open_file(Path("/tmp/video_b.mp4"))
+    assert model.rowCount() == 1
+    assert ctrl.clip_count == 1
+    # Verify the remaining clip is from video B
+    clip = model.clip_at(0)
+    assert clip is not None
+    assert "b_clip_001" in clip.path
+
+
+def test_open_file_clears_undo_info(tmp_path):
+    """Opening a new video must clear undo info from the previous video."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    store.add_clip(
+        clip_path="/tmp/clips/a_clip_001.mp4",
+        source_video_path="/tmp/video_a.mp4",
+        start_time=10.0,
+        end_time=20.0,
+    )
+
+    player = MagicMock()
+    player.load.return_value = True
+    ctrl = ClipController(
+        player, MagicMock(), MagicMock(), ClipListModel(), clip_store=store
+    )
+
+    # Open video A to populate undo info
+    ctrl.open_file(Path("/tmp/video_a.mp4"))
+    # Manually set undo info to simulate a clip having been made
+    ctrl._last_undo_info = (store.get_last_clip(), 10.0)
+    assert ctrl._last_undo_info is not None
+
+    # Open video B — should clear undo info
+    ctrl.open_file(Path("/tmp/video_b.mp4"))
+    assert ctrl._last_undo_info is None
+
+
+# ---------------------------------------------------------------------------
+# Bug 7: _clip_count not incremented during batch
+# ---------------------------------------------------------------------------
+
+
+def test_batch_progress_increments_clip_count(tmp_path):
+    """_on_batch_progress must increment _clip_count for each successful clip."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    player = MagicMock()
+    model = ClipListModel()
+    ctrl = ClipController(player, MagicMock(), MagicMock(), model, clip_store=store)
+    ctrl._current_video = Path("/tmp/game.mp4")
+    ctrl._clip_count = 2  # simulate 2 clips already saved
+
+    # Simulate two batch progress events
+    result_1 = ClipResult(
+        path="/tmp/clips/game_clip_003.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    ctrl._on_batch_progress(1, 2, result_1)
+    assert ctrl.clip_count == 3
+    assert model.rowCount() == 1
+
+    result_2 = ClipResult(
+        path="/tmp/clips/game_clip_004.mp4",
+        start_time=50.0,
+        end_time=60.0,
+        success=True,
+    )
+    ctrl._on_batch_progress(2, 2, result_2)
+    assert ctrl.clip_count == 4
+    assert model.rowCount() == 2
+
+
+def test_batch_progress_does_not_increment_on_failure(tmp_path):
+    """_on_batch_progress must not increment _clip_count for failed clips."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    ctrl = ClipController(
+        MagicMock(), MagicMock(), MagicMock(), ClipListModel(), clip_store=store
+    )
+    ctrl._current_video = Path("/tmp/game.mp4")
+    ctrl._clip_count = 1
+
+    result = ClipResult(
+        path="",
+        start_time=0.0,
+        end_time=0.0,
+        success=False,
+        error="ffmpeg error",
+    )
+    ctrl._on_batch_progress(1, 1, result)
+    assert ctrl.clip_count == 1
+
+
+# ---------------------------------------------------------------------------
+# Bug 8: _last_undo_info not set for batch clips
+# ---------------------------------------------------------------------------
+
+
+def test_batch_progress_sets_undo_info(tmp_path):
+    """_on_batch_progress must set _last_undo_info for successful clips."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    ctrl = ClipController(
+        MagicMock(), MagicMock(), MagicMock(), ClipListModel(), clip_store=store
+    )
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    result = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=25.0,
+        end_time=35.0,
+        success=True,
+    )
+    ctrl._on_batch_progress(1, 1, result)
+
+    assert ctrl._last_undo_info is not None
+    stored_clip, restore_pos = ctrl._last_undo_info
+    assert stored_clip.clip_path == "/tmp/clips/game_clip_001.mp4"
+    assert restore_pos == 25.0
+
+
+def test_batch_progress_updates_undo_info_per_clip(tmp_path):
+    """_last_undo_info should reflect the most recent batch clip."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    ctrl = ClipController(
+        MagicMock(), MagicMock(), MagicMock(), ClipListModel(), clip_store=store
+    )
+    ctrl._current_video = Path("/tmp/game.mp4")
+
+    result_1 = ClipResult(
+        path="/tmp/clips/game_clip_001.mp4",
+        start_time=10.0,
+        end_time=20.0,
+        success=True,
+    )
+    ctrl._on_batch_progress(1, 2, result_1)
+
+    result_2 = ClipResult(
+        path="/tmp/clips/game_clip_002.mp4",
+        start_time=40.0,
+        end_time=50.0,
+        success=True,
+    )
+    ctrl._on_batch_progress(2, 2, result_2)
+
+    # Undo info should point to the second (most recent) clip
+    assert ctrl._last_undo_info is not None
+    stored_clip, restore_pos = ctrl._last_undo_info
+    assert stored_clip.clip_path == "/tmp/clips/game_clip_002.mp4"
+    assert restore_pos == 40.0
+
+
+def test_batch_progress_does_not_set_undo_info_on_failure(tmp_path):
+    """_last_undo_info should remain None if a batch clip fails."""
+    from jorja_clipper.clip_store import ClipStore
+
+    db_path = tmp_path / "clips.db"
+    store = ClipStore(db_path)
+
+    ctrl = ClipController(
+        MagicMock(), MagicMock(), MagicMock(), ClipListModel(), clip_store=store
+    )
+    ctrl._current_video = Path("/tmp/game.mp4")
+    ctrl._last_undo_info = None
+
+    result = ClipResult(
+        path="",
+        start_time=0.0,
+        end_time=0.0,
+        success=False,
+        error="ffmpeg error",
+    )
+    ctrl._on_batch_progress(1, 1, result)
+    assert ctrl._last_undo_info is None

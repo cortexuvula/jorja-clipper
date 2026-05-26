@@ -96,6 +96,9 @@ class ClipController(QObject):
         """Load persisted clips for the current video into the model."""
         if self._current_video is None:
             return
+        # Clear any clips from a previously opened video
+        self._clip_model.clear()
+        self._last_undo_info = None
         stored = self._clip_store.get_clips_for_video(str(self._current_video))
         # stored is newest-first from DB, so iterate as-is to add newest last
         # (which puts it at the top of the list view)
@@ -321,6 +324,7 @@ class ClipController(QObject):
     ) -> None:
         """Handle a single item finishing inside a batch run."""
         if result.success:
+            self._clip_count += 1
             self._clip_model.add_clip(result.path, result.start_time, result.end_time)
             if self._current_video is not None:
                 self._clip_store.add_clip(
@@ -329,6 +333,9 @@ class ClipController(QObject):
                     start_time=result.start_time,
                     end_time=result.end_time,
                 )
+                stored = self._clip_store.get_last_clip()
+                if stored is not None:
+                    self._last_undo_info = (stored, result.start_time)
             self._plugin_loader.broadcast_clip_complete(result)
             logger.info(
                 "Batch progress %d/%d — saved %s", completed, total, result.path
