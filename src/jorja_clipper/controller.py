@@ -3,6 +3,8 @@
 import logging
 from pathlib import Path
 
+from PySide6.QtCore import QObject
+
 from jorja_clipper.batch_queue import BatchWorker, ClipQueue, ClipRequest
 from jorja_clipper.clip_store import ClipStore, StoredClip
 from jorja_clipper.clipper import Clipper, ClipResult
@@ -17,7 +19,7 @@ logger = logging.getLogger(__name__)
 __all__ = ["ClipController"]
 
 
-class ClipController:
+class ClipController(QObject):
     """Orchestrates clip workflow, player state, and settings."""
 
     def __init__(
@@ -29,6 +31,7 @@ class ClipController:
         clip_store: ClipStore | None = None,
         plugin_loader: PluginLoader | None = None,
     ) -> None:
+        super().__init__()
         self._player = player
         self._clipper = clipper
         self._settings = settings

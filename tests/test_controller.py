@@ -3,9 +3,17 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
+from PySide6.QtCore import QObject
+
 from jorja_clipper.clipper import ClipResult
 from jorja_clipper.controller import ClipController
 from jorja_clipper.gui.clip_list import ClipListModel
+
+
+def test_controller_is_qobject():
+    """ClipController must be a QObject so worker signals use queued delivery."""
+    ctrl = ClipController(MagicMock(), MagicMock(), MagicMock(), ClipListModel())
+    assert isinstance(ctrl, QObject)
 
 
 def test_controller_open_file_success():
