@@ -219,3 +219,29 @@ def test_video_widget_init(qtbot):
     # QWidget (--wid embedding) with an _mpv_initialized flag.
     if sys.platform != "darwin":
         assert widget._mpv_initialized is False
+
+
+@_needs_display
+def test_video_widget_native_window_set_in_init(qtbot):
+    """WA_NativeWindow must be set in __init__ before showEvent.
+
+    Required for mpv embedding on Wayland compositors where the native
+    handle must exist before the widget is first shown.
+    """
+    if sys.platform == "darwin":
+        pytest.skip("macOS uses render API, not --wid embedding")
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QWidget
+
+    from jorja_clipper.gui.theme import ThemeManager
+    from jorja_clipper.gui.video_widget import VideoWidget
+
+    player = MagicMock()
+    theme_manager = ThemeManager()
+    parent = QWidget()
+    qtbot.addWidget(parent)
+
+    widget = VideoWidget(player, theme_manager, parent=parent)
+    # Attribute must be set immediately after construction, before showEvent
+    assert widget.testAttribute(Qt.WidgetAttribute.WA_NativeWindow) is True

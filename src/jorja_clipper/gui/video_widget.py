@@ -182,14 +182,16 @@ class _WidVideoWidget(QWidget):
         self._mpv_initialized = False
         self.setMinimumSize(800, 500)
         self.setStyleSheet(f"background-color: {theme_manager.theme.video_bg};")
+        # Force creation of a native window so winId() is valid for mpv.
+        # Set here (not in showEvent) so the native handle is ready before
+        # the widget is first shown — required on some Wayland compositors.
+        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
 
     def showEvent(self, event: QShowEvent) -> None:
         """Called when the widget is first shown; bind mpv here."""
         super().showEvent(event)
         if self._mpv_initialized:
             return
-        # Force creation of a native window so winId() is valid for mpv.
-        self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
         self._mpv_initialized = True
         # winId() returns a platform-specific handle:
         #   Linux: X11 Window ID
