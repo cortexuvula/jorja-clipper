@@ -58,7 +58,8 @@ def test_controller_persists_new_clip_on_finish(tmp_path):
     ctrl._on_clip_finished(worker, result)
 
     assert store.get_last_clip() is not None
-    assert store.get_last_clip().clip_path == str(tmp_path / "out.mp4")
+    # Paths are normalized to POSIX style in the database
+    assert store.get_last_clip().clip_path == (tmp_path / "out.mp4").as_posix()
     assert store.get_last_clip().start_time == 25.0
 
 
@@ -174,4 +175,5 @@ def test_controller_undo_deletes_db_row(tmp_path):
     ctrl.undo_last_clip()
     remaining = store.get_all_clips()
     assert len(remaining) == 1
-    assert remaining[0].clip_path == str(tmp_path / "a.mp4")
+    # Paths are normalized to POSIX style in the database
+    assert remaining[0].clip_path == (tmp_path / "a.mp4").as_posix()
