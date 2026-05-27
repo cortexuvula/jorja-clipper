@@ -166,3 +166,90 @@ def test_settings_save_preserves_permissions(tmp_path):
     data = json.loads(config.read_text())
     assert data["buffer_before"] == 15.0
     assert data["theme"] == "light"
+
+
+def test_load_negative_buffer_resets_to_defaults(tmp_path):
+    """Negative buffer values reset to defaults."""
+    config = tmp_path / "config.json"
+    config.write_text('{"buffer_before": -5.0, "buffer_after": -3.0}')
+
+    s = Settings(config_path=config)
+    s.load()
+
+    # Should reset to defaults
+    assert s.buffer_before == 5.0
+    assert s.buffer_after == 5.0
+
+
+def test_load_non_dict_json_uses_defaults(tmp_path):
+    """JSON that isn't a dict (e.g., list, string) uses defaults."""
+    config = tmp_path / "config.json"
+    config.write_text('["not", "a", "dict"]')
+
+    s = Settings(config_path=config)
+    s.load()
+
+    # Should use defaults
+    assert s.buffer_before == 5.0
+    assert s.buffer_after == 5.0
+    assert s.clip_key == "C"
+
+
+def test_load_invalid_type_buffer_resets_to_defaults(tmp_path):
+    """Non-numeric buffer values trigger ValueError/TypeError reset."""
+    config = tmp_path / "config.json"
+    config.write_text('{"buffer_before": "not a number", "buffer_after": null}')
+
+    s = Settings(config_path=config)
+    s.load()
+
+    # Should reset to defaults
+    assert s.buffer_before == 5.0
+    assert s.buffer_after == 5.0
+
+
+def test_save_handles_oserror_during_write(tmp_path, monkeypatch):
+    """OSError during save is caught and re-raised as RuntimeError."""
+    config = tmp_path / "config.json"
+
+    s = Settings(config_path=config)
+
+    # Mock tempfile.mkstemp to raise OSError
+    import tempfile
+
+    def fake_mkstemp(*args, **kwargs):
+        raise OSError("Disk full")
+
+    monkeypatch.setattr(tempfile, "mkstemp", fake_mkstemp)
+
+    with pytest.raises(RuntimeError, match="Failed to save settings"):
+        s.save()
+
+
+def test_load_corrupt_json_uses_defaults(tmp_path):
+    """Malformed JSON causes load to use defaults."""
+    config = tmp_path / "config.json"
+    config.write_text('{not valid json')
+
+    s = Settings(config_path=config)
+    s.load()
+
+    # Should use defaults
+    assert s.buffer_before == 5.0
+    assert s.buffer_after == 5.0
+
+
+def test_load_file_read_error_uses_defaults(tmp_path):
+    """OSError during file read uses defaults."""
+    config = tmp_path / "config.json"
+    config.write_text('{"buffer_before": 10.0}')
+    config.chmod(0o000)  # Remove read permissions
+
+    s = Settings(config_path=config)
+    s.load()
+
+    # Should use defaults
+    assert s.buffer_before == 5.0
+
+    # Restore permissions for cleanup
+    config.chmod(0o644)

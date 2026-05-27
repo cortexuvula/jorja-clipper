@@ -668,3 +668,103 @@ def test_batch_progress_does_not_set_undo_info_on_failure(tmp_path):
     )
     ctrl._on_batch_progress(1, 1, result)
     assert ctrl._last_undo_info is None
+
+
+def test_queue_clip_no_video():
+    """queue_clip returns ClipResult with error when no video is loaded."""
+    player = MagicMock()
+    clipper = MagicMock()
+    settings = MagicMock()
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, settings, model)
+
+    # No video loaded
+    result = ctrl.queue_clip()
+    assert result is not None
+    assert result.success is False
+    assert "No video loaded" in result.error
+
+
+def test_process_batch_already_running():
+    """process_batch returns error when batch is already running."""
+    player = MagicMock()
+    player.load.return_value = True
+    clipper = MagicMock()
+    settings = MagicMock()
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, settings, model)
+
+    # Load a video first
+    ctrl.open_file(Path("/tmp/game.mp4"))
+
+    # Mock batch worker as running
+    mock_worker = MagicMock()
+    mock_worker.isRunning.return_value = True
+    ctrl._batch_worker = mock_worker
+
+    result = ctrl.process_batch()
+    assert isinstance(result, ClipResult)
+    assert result.success is False
+    assert "Batch already in progress" in result.error
+
+
+def test_process_batch_empty_queue():
+    """process_batch returns error when queue is empty."""
+    player = MagicMock()
+    player.load.return_value = True
+    clipper = MagicMock()
+    settings = MagicMock()
+    model = ClipListModel()
+    ctrl = ClipController(player, clipper, settings, model)
+
+    # Load a video
+    ctrl.open_file(Path("/tmp/game.mp4"))
+
+    # Queue is empty (default state)
+    result = ctrl.process_batch()
+    assert isinstance(result, ClipResult)
+    assert result.success is False
+    assert "Batch queue is empty" in result.error
+
+
+def test_undo_last_clip_oserror_handling(tmp_path, caplog):
+    """undo_last_clip logs warning but doesn't crash on file deletion OSError."""
+    import logging
+
+    player = MagicMock()
+    player.load.return_value = True
+    clipper = MagicMock()
+    settings = MagicMock()
+    model = ClipListModel()
+    clip_store = MagicMock()
+    ctrl = ClipController(player, clipper, settings, model)
+    ctrl._clip_store = clip_store
+
+    # Load a video
+    ctrl.open_file(Path("/tmp/game.mp4"))
+
+    # Create fake stored clip info with non-existent path
+    from jorja_clipper.clip_store import StoredClip
+    from datetime import datetime
+
+    stored = StoredClip(
+        id=1,
+        source_video_path="/tmp/game.mp4",
+        clip_path="/nonexistent/path/clip.mp4",
+        start_time=10.0,
+        end_time=20.0,
+        duration=10.0,
+        created_at="2024-01-01 12:00:00",
+    )
+    ctrl._last_undo_info = (stored, 15.0)
+
+    # Add a clip to the model
+    model.add_clip("Test Clip", 10.0, 20.0)
+    ctrl._clip_count = 1
+
+    # Should not raise, just log warning
+    with caplog.at_level(logging.WARNING):
+        result = ctrl.undo_last_clip()
+
+    assert result is True
+    ctrl._clip_store.delete_clip.assert_called_once_with(1)

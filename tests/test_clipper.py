@@ -193,6 +193,134 @@ def test_save_clip_cleans_up_on_timeout(mock_run, tmp_path):
         assert list(clips_dir.iterdir()) == []
 
 
+def test_find_ffmpeg_in_pyinstaller_bundle(tmp_path, monkeypatch):
+    """_find_ffmpeg checks bundled location when sys.frozen is True."""
+    import sys
+
+    # Create a fake bundled ffmpeg
+    meipass = tmp_path / "bundle"
+    meipass.mkdir()
+    bundled_ffmpeg = meipass / "ffmpeg"
+    bundled_ffmpeg.write_bytes(b"#!/bin/sh\n")
+    bundled_ffmpeg.chmod(0o755)
+
+    # Mock sys.frozen and sys._MEIPASS
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
+
+    c = Clipper()
+    result = c._find_ffmpeg()
+    assert result == str(bundled_ffmpeg)
+
+
+def test_find_ffmpeg_in_macos_frameworks_dir(tmp_path, monkeypatch):
+    """_find_ffmpeg checks Frameworks directory for macOS .app bundles."""
+    import sys
+
+    # Create macOS-style bundle: Contents/MacOS and Contents/Frameworks
+    contents = tmp_path / "Contents"
+    macos = contents / "MacOS"
+    macos.mkdir(parents=True)
+    frameworks = contents / "Frameworks"
+    frameworks.mkdir()
+    bundled_ffmpeg = frameworks / "ffmpeg"
+    bundled_ffmpeg.write_bytes(b"#!/bin/sh\n")
+    bundled_ffmpeg.chmod(0o755)
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(macos), raising=False)
+
+    c = Clipper()
+    result = c._find_ffmpeg()
+    assert result == str(bundled_ffmpeg)
+
+
+def test_calculate_times_with_none_inputs():
+    """calculate_times returns (0, 0) when duration or position is None."""
+    c = Clipper()
+
+    # None duration
+    start, end = c.calculate_times(current_pos=30.0, video_duration=None)
+    assert (start, end) == (0.0, 0.0)
+
+    # None position
+    start, end = c.calculate_times(current_pos=None, video_duration=120.0)
+    assert (start, end) == (0.0, 0.0)
+
+    # Both None
+    start, end = c.calculate_times(current_pos=None, video_duration=None)
+    assert (start, end) == (0.0, 0.0)
+
+
+@patch("jorja_clipper.clipper.Clipper._find_ffmpeg", return_value="/usr/bin/ffmpeg")
+def test_save_clip_rejects_invalid_time_range(mock_find, tmp_path):
+    """save_clip returns failure when end <= start."""
+    video = tmp_path / "game.mp4"
+    video.touch()
+
+    c = Clipper(buffer_before=5.0, buffer_after=5.0)
+    # Force end <= start by using duration=0
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=0.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert "invalid time range" in result.error.lower()
+
+
+@patch("jorja_clipper.clipper.subprocess.run")
+def test_save_clip_timeout_with_no_output_path(mock_run, tmp_path):
+    """TimeoutExpired before build_output_path completes leaves output_path=None."""
+    import subprocess as sp
+
+    video = tmp_path / "game.mp4"
+    video.touch()
+
+    # Raise timeout before ffmpeg is even called
+    mock_run.side_effect = sp.TimeoutExpired(cmd=["ffmpeg"], timeout=30)
+
+    c = Clipper()
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert "timed out" in result.error.lower()
+
+
+@patch("jorja_clipper.clipper.subprocess.run")
+def test_save_clip_catches_generic_exception(mock_run, tmp_path):
+    """Generic exceptions during ffmpeg execution are caught and reported."""
+    video = tmp_path / "game.mp4"
+    video.touch()
+
+    def fake_run(cmd, **kwargs):
+        output = Path(cmd[-1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b"\x00" * 32)
+        raise RuntimeError("Unexpected error")
+
+    mock_run.side_effect = fake_run
+
+    c = Clipper()
+    result = c.save_clip(
+        video_path=video,
+        current_pos=30.0,
+        video_duration=120.0,
+        clip_number=1,
+    )
+    assert result.success is False
+    assert "unexpected error" in result.error.lower()
+    # Partial file should be cleaned up
+    clips_dir = tmp_path / "clips"
+    if clips_dir.exists():
+        assert list(clips_dir.iterdir()) == []
+
+
 # ---------------------------------------------------------------------------
 # Property-based tests (hypothesis)
 # ---------------------------------------------------------------------------

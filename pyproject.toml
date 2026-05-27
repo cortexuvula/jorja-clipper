@@ -74,4 +74,32 @@ indent-style = "space"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 qt_api = "pyside6"
-addopts = "-v"
+addopts = "-v --cov=jorja_clipper --cov-report=term-missing --cov-branch"
+
+[tool.coverage.run]
+branch = true
+source = ["jorja_clipper"]
+omit = [
+    "*/__main__.py",
+    "*/app.py",
+    "*/gui/video_widget.py",
+]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+    "raise NotImplementedError",
+    "pass",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]

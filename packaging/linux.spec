@@ -22,16 +22,17 @@ for path in [
         _ffmpeg_path = path
         break
 
-# Find ffmpeg dependencies (libav*, libsw*)
+# Find ffmpeg dependencies — use explicit names to avoid matching unrelated
+# libraries like libavahi-common.so (mDNS, NOT an ffmpeg lib).
+_ffmpeg_lib_patterns = [
+    "libavcodec", "libavdevice", "libavfilter", "libavformat", "libavutil",
+    "libswresample", "libswscale",
+]
 _ffmpeg_libs = []
 if _ffmpeg_path:
-    for pattern in [
-        "/usr/lib/x86_64-linux-gnu/libav*.so*",
-        "/usr/lib/x86_64-linux-gnu/libsw*.so*",
-        "/usr/lib/libav*.so*",
-        "/usr/lib/libsw*.so*",
-    ]:
-        _ffmpeg_libs.extend(glob.glob(pattern))
+    for lib_name in _ffmpeg_lib_patterns:
+        for lib_dir in ["/usr/lib/x86_64-linux-gnu", "/usr/lib"]:
+            _ffmpeg_libs.extend(glob.glob(os.path.join(lib_dir, f"{lib_name}.so*")))
 
 # Deduplicate: keep only actual files (not symlinks pointing outside)
 _binaries = []
