@@ -8,7 +8,7 @@ use crate::clipper::ClipResult;
 use crate::controller::Controller;
 use crate::storage::Clip;
 
-/// Create a hidden child window for mpv to render into.
+/// Create a child window for mpv to render into.
 /// Returns the native window ID (X11 window ID on Linux) for use with mpv's --wid.
 #[tauri::command]
 pub async fn create_mpv_window(
@@ -16,7 +16,7 @@ pub async fn create_mpv_window(
     state: State<'_, Arc<Mutex<Controller>>>,
 ) -> Result<u64, String> {
     use raw_window_handle::HasWindowHandle;
-    use tauri::{WebviewWindowBuilder, WebviewUrl};
+    use tauri::WindowBuilder;
 
     // Close any existing mpv window
     {
@@ -26,11 +26,14 @@ pub async fn create_mpv_window(
         }
     }
 
-    // Create a new hidden, frameless webview window for mpv
-    let window = WebviewWindowBuilder::new(&app, "mpv-window", WebviewUrl::App("about:blank".into()))
+    // Create a plain window (not WebviewWindow) for mpv rendering.
+    // This avoids the WebKitGTK child window that would obscure mpv's rendering surface.
+    // Position off-screen initially; position_mpv_window will move it to the correct location.
+    let window = WindowBuilder::new(&app, "mpv-window")
         .title("mpv")
         .inner_size(1.0, 1.0)
-        .visible(false)
+        .position(-100.0, -100.0)  // off-screen initially
+        .visible(true)
         .decorations(false)
         .build()
         .map_err(|e| format!("Failed to create mpv window: {}", e))?;
@@ -41,7 +44,6 @@ pub async fn create_mpv_window(
         .map_err(|e| format!("Failed to set always on top: {}", e))?;
 
     // Get the native window handle for mpv's --wid parameter
-    // Must extract wid before any .await since WindowHandle is !Send
     let wid = {
         let handle = window
             .window_handle()
@@ -56,7 +58,7 @@ pub async fn create_mpv_window(
         }
     };
 
-    // Store the window reference so it stays alive
+    // Store the window reference
     let mut ctrl = state.lock().await;
     ctrl.mpv_window = Some(window.clone());
     ctrl.mpv_wid = Some(wid);

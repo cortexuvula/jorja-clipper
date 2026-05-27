@@ -20,7 +20,7 @@ pub struct Controller {
     pub current_video: Option<PathBuf>,
     pub clip_count: i32,
     pub is_clipping: bool,
-    pub mpv_window: Option<tauri::WebviewWindow>,
+    pub mpv_window: Option<tauri::Window>,
     pub mpv_wid: Option<u64>,
 }
 

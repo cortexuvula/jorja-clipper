@@ -127,22 +127,34 @@ impl Player {
         socket.write_all(b"\n").await?;
         socket.flush().await?;
 
-        // Read exactly one line of response. We create the BufReader here and
-        // drop it at the end of the function. Since mpv sends one JSON object
-        // per line in response to synchronous commands, no bytes should be
-        // left in the buffer for the next caller.
+        // mpv sends event notifications (like {"event":"playback-restart"}) mixed
+        // with command responses. Command responses have an "error" field, events
+        // have an "event" field. We need to skip events and find the response.
         let mut reader = BufReader::new(&mut *socket);
         let mut response_line = String::new();
-        reader.read_line(&mut response_line).await?;
 
-        let response: MpvResponse =
-            serde_json::from_str(&response_line).map_err(|e| AppError::MpvIpc(e.to_string()))?;
+        loop {
+            response_line.clear();
+            let bytes_read = reader.read_line(&mut response_line).await?;
+            if bytes_read == 0 {
+                return Err(AppError::MpvIpc("mpv IPC: connection closed".to_string()));
+            }
 
-        if response.error != "success" {
-            return Err(AppError::MpvIpc(response.error));
+            // Try to parse as a command response (has "error" field)
+            match serde_json::from_str::<MpvResponse>(&response_line) {
+                Ok(response) => {
+                    // This is a command response
+                    if response.error != "success" {
+                        return Err(AppError::MpvIpc(response.error));
+                    }
+                    return Ok(response.data);
+                }
+                Err(_) => {
+                    // This is likely an event notification, skip it
+                    continue;
+                }
+            }
         }
-
-        Ok(response.data)
     }
 
     /// Load a video file into mpv, replacing whatever was playing.
