@@ -1,43 +1,48 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { invoke } from '@tauri-apps/api/core';
-  import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { api } from '$lib/api';
 
-  let { videoLoaded = false } = $props();
+  let { videoLoaded = false, onMpvWindowCreated } = $props<{
+    videoLoaded?: boolean;
+    onMpvWindowCreated?: (wid: number) => void;
+  }>();
 
   let container: HTMLDivElement;
   let rect: DOMRect | null = $state(null);
 
-  async function updateMpvWindow() {
+  async function sendPosition() {
     if (!rect || !videoLoaded) return;
-
-    const appWindow = getCurrentWindow();
-    const scaleFactor = await appWindow.scaleFactor();
-
-    // Convert from logical to physical pixels
-    const physicalRect = {
-      x: Math.round(rect.x * scaleFactor),
-      y: Math.round(rect.y * scaleFactor),
-      width: Math.round(rect.width * scaleFactor),
-      height: Math.round(rect.height * scaleFactor),
-    };
-
-    await invoke('position_mpv_window', physicalRect);
+    await api.positionMpvWindow(
+      Math.round(rect.x),
+      Math.round(rect.y),
+      Math.round(rect.width),
+      Math.round(rect.height)
+    );
   }
 
   // Reactively update mpv window when rect or videoLoaded changes
   $effect(() => {
     if (rect && videoLoaded) {
-      updateMpvWindow();
+      sendPosition();
     }
   });
 
   onMount(() => {
+    // Create the mpv overlay window and get its native handle
+    api.createMpvWindow().then((wid) => {
+      onMpvWindowCreated?.(wid);
+    }).catch((e) => {
+      console.error('Failed to create mpv window:', e);
+    });
+
+    // Track container position/size for mpv overlay
     const observer = new ResizeObserver(() => {
       rect = container.getBoundingClientRect();
     });
-
     observer.observe(container);
+
+    // Get initial rect
+    rect = container.getBoundingClientRect();
 
     return () => observer.disconnect();
   });

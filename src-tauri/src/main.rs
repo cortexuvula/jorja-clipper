@@ -25,6 +25,8 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .manage(controller)
         .invoke_handler(tauri::generate_handler![
+            commands::create_mpv_window,
+            commands::position_mpv_window,
             commands::open_video,
             commands::toggle_pause,
             commands::seek,

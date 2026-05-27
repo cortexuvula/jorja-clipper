@@ -19,6 +19,7 @@ thiserror = "1"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-dialog = "2.7.1"
+raw-window-handle = "0.6"
 
 [features]
 default = ["custom-protocol"]

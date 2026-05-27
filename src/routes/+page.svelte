@@ -11,6 +11,7 @@
   let duration = $state(0);
   let position = $state(0);
   let paused = $state(true);
+  let mpvWid: number | undefined = $state(undefined);
 
   let settingsOpen = $state(false);
   let settings: Settings = $state({
@@ -40,7 +41,7 @@
 
     if (selected) {
       videoPath = selected;
-      duration = await api.openVideo(selected);
+      duration = await api.openVideo(selected, mpvWid);
       videoLoaded = true;
       paused = true;
     }
@@ -112,7 +113,7 @@
 
 <div class="main-layout">
   <div class="video-section">
-    <VideoPlayer {videoLoaded} />
+    <VideoPlayer {videoLoaded} onMpvWindowCreated={(wid) => mpvWid = wid} />
 
     <div class="controls">
       <button onclick={openVideo}>Open (O)</button>

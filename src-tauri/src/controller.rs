@@ -20,6 +20,8 @@ pub struct Controller {
     pub current_video: Option<PathBuf>,
     pub clip_count: i32,
     pub is_clipping: bool,
+    pub mpv_window: Option<tauri::WebviewWindow>,
+    pub mpv_wid: Option<u64>,
 }
 
 impl Controller {
@@ -39,6 +41,8 @@ impl Controller {
             current_video: None,
             clip_count: 0,
             is_clipping: false,
+            mpv_window: None,
+            mpv_wid: None,
         })
     }
 
@@ -47,6 +51,9 @@ impl Controller {
     /// Returns the duration of the loaded video in seconds. Also reloads
     /// any previously saved clips for this video from the database.
     pub async fn open_video(&mut self, path: PathBuf, wid: Option<u64>) -> AppResult<f64> {
+        // Use stored mpv window ID if no wid provided
+        let wid = wid.or(self.mpv_wid);
+
         // Spawn mpv if not already running
         if !self.player.is_running() {
             self.player.spawn(wid).await?;
@@ -145,5 +152,8 @@ impl Controller {
     /// Shut down the mpv child process and clean up resources.
     pub async fn shutdown(&mut self) {
         self.player.shutdown().await;
+        if let Some(win) = self.mpv_window.take() {
+            let _ = win.close();
+        }
     }
 }
