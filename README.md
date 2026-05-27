@@ -1,97 +1,74 @@
 # Jorja Clipper
 
-Cross-platform desktop application for instant sports highlight extraction.
-
-## Overview
-
-Jorja Clipper lets you play a video and save a lossless clip (with configurable pre/post-event buffers) with a single keystroke — no re-encoding. Designed for clipping basketball game highlights in real time.
+Cross-platform desktop app for instant sports highlight extraction.
 
 ## Features
 
-- **Instant clip saving** — press a hotkey during playback to grab the surrounding seconds
-- **No re-encoding** — fast `ffmpeg` stream-copy preserves original quality
-- **Batch queue** — queue multiple clips and process them in one run
-- **Clip persistence** — clips are saved to a SQLite database per video, restored on reopen
-- **Undo** — reverse the last clip (deletes file + DB entry, restores playback position)
-- **Themes** — dark (default) and light theme
-- **Plugins** — drop Python scripts in `~/.config/jorja-clipper/plugins/` to extend behaviour
-- **Cross-platform** — Linux (.deb), macOS (.dmg / .zip), Windows (.exe)
+- **Instant clipping**: Press a hotkey during video playback to save a lossless clip
+- **Configurable buffers**: Set pre/post buffers for perfect highlight timing
+- **Stream copy**: Uses FFmpeg `-c copy` for instant, lossless clipping
+- **Cross-platform**: Works on Linux (Wayland/X11), Windows, and macOS
 
-## Installation
+## Tech Stack
 
-Download the latest release from [GitHub Releases](https://github.com/cortexuvula/jorja-clipper/releases).
-
-### Linux (Debian/Ubuntu)
-
-```bash
-sudo apt install ./jorja-clipper-*-amd64.deb
-```
-
-Dependencies: `mpv`, `ffmpeg` (installed automatically via apt).
-
-### macOS
-
-1. Download the `.dmg` or `.zip`
-2. Drag **Jorja Clipper** to Applications
-3. On first launch, right-click → Open to bypass Gatekeeper (the app is signed and notarized)
-
-### Windows
-
-Run the `.exe` installer. Requires `mpv` and `ffmpeg` on your PATH.
-
-## Keyboard Shortcuts
-
-| Key | Action |
-| :--- | :--- |
-| **O** | Open video file |
-| **Space** | Play / Pause |
-| **Left / Right** | Seek ±5 s |
-| **Shift + Left/Right** | Seek ±1 s |
-| **C** | Save clip (hotkey is configurable) |
-| **Q** | Queue clip for batch processing |
-| **U** | Undo last clip |
-
-## Settings
-
-Click **Settings** in the app or edit `~/.config/jorja-clipper/config.json`:
-
-| Key | Default | Description |
-| :--- | :--- | :--- |
-| `buffer_before` | `5.0` | Seconds to include before the clip point |
-| `buffer_after` | `5.0` | Seconds to include after the clip point |
-| `clip_key` | `"C"` | Hotkey for saving a clip |
-| `theme` | `"dark"` | UI theme (`"dark"` or `"light"`) |
-
-## Plugins
-
-Create a Python file in `~/.config/jorja-clipper/plugins/`. Plugins receive hooks for clip start and clip complete events. See `jorja_clipper/plugins.py` for the hook interface.
+- **Backend**: Rust (Tauri 2.0)
+- **Frontend**: Svelte 5 + TypeScript
+- **Video**: mpv (via IPC)
+- **Clipping**: FFmpeg (subprocess)
+- **Storage**: SQLite
 
 ## Development
 
-Requires Python 3.10+.
+### Prerequisites
+
+- Rust (1.70+)
+- Node.js (18+)
+- mpv
+- FFmpeg
+
+### Linux Dependencies
+
+On Ubuntu/Debian, install the Tauri system dependencies:
 
 ```bash
-git clone https://github.com/cortexuvula/jorja-clipper.git
-cd jorja-clipper
-pip install -e '.[dev]'
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev
 ```
 
-Run tests:
+### Setup
 
 ```bash
-pytest
+npm install
 ```
 
-Lint:
+### Run Development Server
 
 ```bash
-ruff check src tests
+npm run tauri dev
 ```
 
-### Tech Stack
+### Build Release
 
-Python, PySide6 (Qt 6), SQLite, ffmpeg, mpv (python-mpv), uv, pytest, ruff
+```bash
+npm run tauri build
+```
+
+## Usage
+
+1. Click "Open" or press `O` to load a video
+2. Press `Space` to play/pause
+3. Press `C` to save a clip at current position
+4. Use arrow keys to seek (±5s, or ±1s with Shift)
+
+## Architecture
+
+The app follows a three-layer architecture:
+
+1. **Rust Backend**: Business logic, FFmpeg integration, mpv process management
+2. **Tauri IPC**: Type-safe command interface
+3. **Svelte Frontend**: UI rendering, user input
+
+mpv runs as a child process with `--wid` embedding managed by Tauri's windowing layer, providing reliable video embedding on all platforms including Linux Wayland.
 
 ## License
 
-MIT License
+MIT
