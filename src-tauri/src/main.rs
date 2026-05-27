@@ -2,6 +2,7 @@
 
 mod error;
 mod settings;
+mod storage;
 
 use error::AppError;
 
