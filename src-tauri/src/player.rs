@@ -34,6 +34,11 @@ impl Player {
         }
     }
 
+    /// Returns true if an mpv child process is currently running.
+    pub fn is_running(&self) -> bool {
+        self.process.is_some()
+    }
+
     /// Spawn mpv as a child process with IPC server enabled.
     ///
     /// When `wid` is provided, mpv renders into the given native window handle.

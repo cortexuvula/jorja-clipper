@@ -5,6 +5,7 @@ mod settings;
 mod storage;
 mod clipper;
 mod player;
+mod controller;
 
 use error::AppError;
 
