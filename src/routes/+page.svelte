@@ -3,12 +3,31 @@
   import { api } from '$lib/api';
   import { open } from '@tauri-apps/plugin-dialog';
   import VideoPlayer from '$lib/components/VideoPlayer.svelte';
+  import SettingsDialog from '$lib/components/SettingsDialog.svelte';
+  import type { Settings } from '$lib/types';
 
   let videoLoaded = $state(false);
   let videoPath = $state('');
   let duration = $state(0);
   let position = $state(0);
   let paused = $state(true);
+
+  let settingsOpen = $state(false);
+  let settings: Settings = $state({
+    buffer_before: 5.0,
+    buffer_after: 5.0,
+    clip_key: 'c',
+    theme: 'dark'
+  });
+
+  function openSettings() {
+    settingsOpen = true;
+  }
+
+  function saveSettings(newSettings: Settings) {
+    settings = newSettings;
+    // TODO: Persist to backend
+  }
 
   async function openVideo() {
     const selected = await open({
@@ -103,6 +122,7 @@
       <button onclick={saveClip} disabled={!videoLoaded}>
         Clip (C)
       </button>
+      <button onclick={openSettings}>Settings</button>
     </div>
 
     {#if videoLoaded}
@@ -117,6 +137,13 @@
     <p class="placeholder">No clips yet</p>
   </div>
 </div>
+
+<SettingsDialog
+  bind:open={settingsOpen}
+  bind:settings={settings}
+  onsave={saveSettings}
+  oncancel={() => settingsOpen = false}
+/>
 
 <style>
   .main-layout {
