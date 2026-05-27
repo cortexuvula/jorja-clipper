@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+import os
 import sys
 import threading
 from pathlib import Path
@@ -49,7 +50,21 @@ class Player:
 
         with contextlib.suppress(locale.Error):
             locale.setlocale(locale.LC_NUMERIC, "C")
-        self._mpv = mpv.MPV(**kwargs)
+
+        # On Linux with XWayland (QT_QPA_PLATFORM=xcb), mpv may detect the
+        # Wayland display and create its own Wayland window, ignoring the X11
+        # --wid parameter. Temporarily unset WAYLAND_DISPLAY to force mpv to
+        # use X11 and respect the wid embedding.
+        saved_wayland_display = None
+        if self._wid is not None and sys.platform == "linux":
+            saved_wayland_display = os.environ.pop("WAYLAND_DISPLAY", None)
+
+        try:
+            self._mpv = mpv.MPV(**kwargs)
+        finally:
+            # Restore WAYLAND_DISPLAY for other components
+            if saved_wayland_display is not None:
+                os.environ["WAYLAND_DISPLAY"] = saved_wayland_display
 
         # Register property observers — keep strong references to prevent GC
         # while mpv's event thread may still invoke them.

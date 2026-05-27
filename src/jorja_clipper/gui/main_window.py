@@ -185,9 +185,9 @@ class MainWindow(QMainWindow):
         # Only apply background to video widget on platforms using --wid
         # embedding. On macOS (render API / QOpenGLWidget), a stylesheet
         # background would interfere with GL rendering.
-        if sys.platform != "darwin":
-            t = self._theme_manager.theme
-            self._video_widget.setStyleSheet(f"background-color: {t.video_bg};")
+        # The video widget's background is handled via the theme stylesheet
+        # (QWidget#videoWidget { background-color: transparent }) to prevent
+        # Qt from painting over the embedded mpv child window.
         if self._title_bar is not None:
             self._title_bar.apply_theme(self._theme_manager)
 

@@ -5,6 +5,7 @@ import faulthandler
 import locale
 import logging
 import logging.handlers
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,12 @@ from pathlib import Path
 if sys.platform in ("linux", "darwin", "freebsd", "openbsd"):
     with contextlib.suppress(locale.Error):
         locale.setlocale(locale.LC_NUMERIC, "C")
+
+# Force XCB (XWayland) on Linux so mpv's --wid embedding works.
+# On native Wayland, QWidget.winId() returns a wl_surface* pointer, which
+# mpv cannot use for window embedding.  XCB gives us real X11 Window IDs.
+if sys.platform == "linux" and not os.environ.get("QT_QPA_PLATFORM"):
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 from PySide6.QtWidgets import QApplication
 

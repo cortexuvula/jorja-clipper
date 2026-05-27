@@ -180,12 +180,17 @@ class _WidVideoWidget(QWidget):
         self._player = player
         self._theme_manager = theme_manager
         self._mpv_initialized = False
+        self.setObjectName("videoWidget")
         self.setMinimumSize(800, 500)
-        self.setStyleSheet(f"background-color: {theme_manager.theme.video_bg};")
         # Force creation of a native window so winId() is valid for mpv.
         # Set here (not in showEvent) so the native handle is ready before
         # the widget is first shown — required on some Wayland compositors.
         self.setAttribute(Qt.WidgetAttribute.WA_NativeWindow)
+        # Prevent Qt from painting over the embedded mpv child window.
+        # The theme stylesheet sets background-color: transparent for
+        # #videoWidget to avoid covering mpv's video frames during playback.
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent)
 
     def showEvent(self, event: QShowEvent) -> None:
         """Called when the widget is first shown; bind mpv here."""

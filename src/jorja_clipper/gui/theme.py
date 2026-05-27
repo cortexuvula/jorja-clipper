@@ -137,6 +137,11 @@ class ThemeManager:
                 color: {t.window_fg};
                 font-size: {t.font_base}pt;
             }}
+            /* Video widget must NOT have a painted background — it would cover
+               the embedded mpv child window during playback. */
+            QWidget#videoWidget {{
+                background-color: transparent;
+            }}
             QPushButton {{
                 background-color: {t.button_bg};
                 color: {t.button_fg};
