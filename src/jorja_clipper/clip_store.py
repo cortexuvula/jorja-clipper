@@ -59,7 +59,7 @@ class ClipStore:
         if created_at is None:
             created_at = datetime.now().isoformat()
         duration = end_time - start_time
-        # Normalize paths to POSIX-style (forward slashes) for cross-platform compatibility
+        # Normalize paths to POSIX style for cross-platform compatibility
         normalized_clip_path = Path(clip_path).as_posix()
         normalized_video_path = Path(source_video_path).as_posix()
         with sqlite3.connect(self._db_path) as conn:
