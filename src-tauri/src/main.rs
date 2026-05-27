@@ -7,6 +7,8 @@ mod error;
 mod player;
 mod settings;
 mod storage;
+#[cfg(target_os = "linux")]
+mod x11_window;
 
 use std::sync::Arc;
 

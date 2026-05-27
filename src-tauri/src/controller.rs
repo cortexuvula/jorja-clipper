@@ -1,5 +1,8 @@
 use std::path::PathBuf;
 
+#[cfg(target_os = "linux")]
+use crate::x11_window::X11Window;
+
 use crate::clipper::{Clipper, ClipResult};
 use crate::error::{AppError, AppResult};
 use crate::player::Player;
@@ -20,7 +23,8 @@ pub struct Controller {
     pub current_video: Option<PathBuf>,
     pub clip_count: i32,
     pub is_clipping: bool,
-    pub mpv_window: Option<tauri::Window>,
+    #[cfg(target_os = "linux")]
+    pub mpv_window: Option<X11Window>,
     pub mpv_wid: Option<u64>,
 }
 
@@ -41,6 +45,7 @@ impl Controller {
             current_video: None,
             clip_count: 0,
             is_clipping: false,
+            #[cfg(target_os = "linux")]
             mpv_window: None,
             mpv_wid: None,
         })
@@ -152,8 +157,10 @@ impl Controller {
     /// Shut down the mpv child process and clean up resources.
     pub async fn shutdown(&mut self) {
         self.player.shutdown().await;
-        if let Some(win) = self.mpv_window.take() {
-            let _ = win.close();
+        #[cfg(target_os = "linux")]
+        {
+            // Drop will destroy the X11 window
+            self.mpv_window.take();
         }
     }
 }
