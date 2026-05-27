@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
 
@@ -16,7 +17,7 @@ pub struct Clip {
 }
 
 pub struct ClipStore {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl ClipStore {
@@ -28,14 +29,20 @@ impl ClipStore {
         }
 
         let conn = Connection::open(&db_path)?;
-        let store = Self { conn };
+        let store = Self {
+            conn: Mutex::new(conn),
+        };
         store.init_schema()?;
 
         Ok(store)
     }
 
     fn init_schema(&self) -> AppResult<()> {
-        self.conn.execute(
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        conn.execute(
             "CREATE TABLE IF NOT EXISTS clips (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 video_path TEXT NOT NULL,
@@ -58,14 +65,18 @@ impl ClipStore {
         end_time: f64,
     ) -> AppResult<Clip> {
         let created_at = Utc::now();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Storage(e.to_string()))?;
 
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO clips (video_path, clip_path, start_time, end_time, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
             params![video_path, clip_path, start_time, end_time, created_at.to_rfc3339()],
         )?;
 
-        let id = self.conn.last_insert_rowid();
+        let id = conn.last_insert_rowid();
 
         Ok(Clip {
             id,
@@ -78,7 +89,11 @@ impl ClipStore {
     }
 
     pub fn get_clips_for_video(&self, video_path: &str) -> AppResult<Vec<Clip>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        let mut stmt = conn.prepare(
             "SELECT id, video_path, clip_path, start_time, end_time, created_at
              FROM clips
              WHERE video_path = ?1
@@ -107,8 +122,11 @@ impl ClipStore {
     }
 
     pub fn delete_clip(&self, id: i64) -> AppResult<()> {
-        self.conn
-            .execute("DELETE FROM clips WHERE id = ?1", params![id])?;
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| AppError::Storage(e.to_string()))?;
+        conn.execute("DELETE FROM clips WHERE id = ?1", params![id])?;
         Ok(())
     }
 
@@ -133,7 +151,9 @@ mod tests {
         let db_path = temp_dir.join("test.db");
         let conn = Connection::open(&db_path).unwrap();
 
-        let store = ClipStore { conn };
+        let store = ClipStore {
+            conn: Mutex::new(conn),
+        };
         store.init_schema().unwrap();
 
         let clip = store
@@ -161,7 +181,9 @@ mod tests {
         let db_path = temp_dir.join("test.db");
         let conn = Connection::open(&db_path).unwrap();
 
-        let store = ClipStore { conn };
+        let store = ClipStore {
+            conn: Mutex::new(conn),
+        };
         store.init_schema().unwrap();
 
         let clip = store
