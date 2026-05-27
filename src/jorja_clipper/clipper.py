@@ -1,5 +1,6 @@
 """Core clip engine — extracts clips via ffmpeg stream-copy."""
 
+import contextlib
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -33,8 +34,8 @@ class Clipper:
         # Check if running in PyInstaller bundle
         if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
             bundle_dir = Path(sys._MEIPASS)
-            # On macOS .app bundles, also check Frameworks directory
-            # sys._MEIPASS points to Contents/MacOS, but binaries are in Contents/Frameworks
+            # On macOS .app bundles, also check Frameworks directory.
+            # sys._MEIPASS points to Contents/MacOS, binaries are in Frameworks.
             search_dirs = [
                 bundle_dir,
                 bundle_dir.parent / "Frameworks",  # macOS .app bundle
@@ -131,10 +132,8 @@ class Clipper:
                     success=True,
                 )
             # Clean up partial output on failure
-            try:
+            with contextlib.suppress(OSError):
                 output_path.unlink(missing_ok=True)
-            except OSError:
-                pass  # Best-effort cleanup; don't mask the original error
             return ClipResult(
                 path="",
                 start_time=start,
@@ -144,10 +143,8 @@ class Clipper:
             )
         except subprocess.TimeoutExpired:
             if output_path is not None:
-                try:
+                with contextlib.suppress(OSError):
                     output_path.unlink(missing_ok=True)
-                except OSError:
-                    pass  # Best-effort cleanup; file may be locked on Windows
             return ClipResult(
                 path="",
                 start_time=start,
@@ -157,10 +154,8 @@ class Clipper:
             )
         except Exception as e:
             if output_path is not None:
-                try:
+                with contextlib.suppress(OSError):
                     output_path.unlink(missing_ok=True)
-                except OSError:
-                    pass  # Best-effort cleanup; don't mask the original error
             return ClipResult(
                 path="",
                 start_time=start,
