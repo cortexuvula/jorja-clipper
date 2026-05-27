@@ -3,6 +3,7 @@
 mod error;
 mod settings;
 mod storage;
+mod clipper;
 
 use error::AppError;
 
