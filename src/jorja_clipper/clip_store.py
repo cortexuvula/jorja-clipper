@@ -59,6 +59,9 @@ class ClipStore:
         if created_at is None:
             created_at = datetime.now().isoformat()
         duration = end_time - start_time
+        # Normalize paths to POSIX-style (forward slashes) for cross-platform compatibility
+        normalized_clip_path = Path(clip_path).as_posix()
+        normalized_video_path = Path(source_video_path).as_posix()
         with sqlite3.connect(self._db_path) as conn:
             cursor = conn.execute(
                 """
@@ -69,7 +72,7 @@ class ClipStore:
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    clip_path, source_video_path,
+                    normalized_clip_path, normalized_video_path,
                     start_time, end_time, duration, created_at
                 ),
             )
@@ -91,6 +94,8 @@ class ClipStore:
 
     def get_clips_for_video(self, video_path: str) -> list[StoredClip]:
         """Return clips for a specific source video."""
+        # Normalize path to POSIX style for cross-platform compatibility
+        normalized_path = Path(video_path).as_posix()
         with sqlite3.connect(self._db_path) as conn:
             rows = conn.execute(
                 """
@@ -100,7 +105,7 @@ class ClipStore:
                 WHERE source_video_path = ?
                 ORDER BY created_at DESC
                 """,
-                (str(video_path),),
+                (normalized_path,),
             ).fetchall()
             return [StoredClip(*row) for row in rows]
 
