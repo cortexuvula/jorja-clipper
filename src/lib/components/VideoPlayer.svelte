@@ -1,8 +1,49 @@
 <script lang="ts">
-  export let videoLoaded = false;
+  import { onMount } from 'svelte';
+  import { invoke } from '@tauri-apps/api/core';
+  import { getCurrentWindow } from '@tauri-apps/api/window';
+
+  let { videoLoaded = false } = $props();
+
+  let container: HTMLDivElement;
+  let rect: DOMRect | null = $state(null);
+
+  async function updateMpvWindow() {
+    if (!rect || !videoLoaded) return;
+
+    const appWindow = getCurrentWindow();
+    const scaleFactor = await appWindow.scaleFactor();
+
+    // Convert from logical to physical pixels
+    const physicalRect = {
+      x: Math.round(rect.x * scaleFactor),
+      y: Math.round(rect.y * scaleFactor),
+      width: Math.round(rect.width * scaleFactor),
+      height: Math.round(rect.height * scaleFactor),
+    };
+
+    await invoke('position_mpv_window', physicalRect);
+  }
+
+  // Reactively update mpv window when rect or videoLoaded changes
+  $effect(() => {
+    if (rect && videoLoaded) {
+      updateMpvWindow();
+    }
+  });
+
+  onMount(() => {
+    const observer = new ResizeObserver(() => {
+      rect = container.getBoundingClientRect();
+    });
+
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  });
 </script>
 
-<div class="video-player" class:loaded={videoLoaded}>
+<div bind:this={container} class="video-container" class:loaded={videoLoaded}>
   {#if !videoLoaded}
     <div class="placeholder">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -16,19 +57,15 @@
         <line x1="17" y1="7" x2="22" y2="7"></line>
       </svg>
       <p>No video loaded</p>
-      <p class="hint">Open a video file to begin</p>
-    </div>
-  {:else}
-    <div class="mpv-container" id="mpv-container">
-      <!-- mpv will render here -->
+      <p class="hint">Press O to open a video file</p>
     </div>
   {/if}
 </div>
 
 <style>
-  .video-player {
+  .video-container {
     width: 100%;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 16/9;
     background: #000;
     border-radius: 8px;
     overflow: hidden;
@@ -37,7 +74,7 @@
     justify-content: center;
   }
 
-  .video-player.loaded {
+  .video-container.loaded {
     background: transparent;
   }
 
@@ -55,13 +92,8 @@
     margin: 0.5rem 0;
   }
 
-  .placeholder .hint {
+  .hint {
     font-size: 0.875rem;
     opacity: 0.7;
-  }
-
-  .mpv-container {
-    width: 100%;
-    height: 100%;
   }
 </style>
