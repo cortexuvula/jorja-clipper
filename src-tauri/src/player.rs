@@ -57,11 +57,9 @@ impl Player {
 
         if let Some(wid) = wid {
             cmd.arg(format!("--wid={}", wid));
-        }
-
-        // Prevent mpv from opening its own Wayland window when embedding
-        let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
-        if wid.is_some() {
+            // Prevent mpv from opening its own Wayland window when embedding.
+            // env_remove only affects the child's cloned environment — the
+            // parent process keeps WAYLAND_DISPLAY untouched.
             cmd.env_remove("WAYLAND_DISPLAY");
         }
 
@@ -71,15 +69,6 @@ impl Player {
             .spawn()?;
 
         self.process = Some(child);
-
-        // Restore WAYLAND_DISPLAY in our own process so the rest of the app
-        // (and future mpv spawns) still see it.
-        if let Some(display) = wayland_display {
-            // SAFETY: set_var is unsafe in Rust 2024+ editions due to UB with
-            // concurrent reads. In 2021 edition this is fine. If the project
-            // moves to 2024, wrap this in an unsafe block or use a mutex.
-            std::env::set_var("WAYLAND_DISPLAY", display);
-        }
 
         // Give mpv a moment to create the IPC socket
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
