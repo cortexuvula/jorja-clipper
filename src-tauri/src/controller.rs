@@ -169,6 +169,14 @@ impl Controller {
         }
     }
 
+    /// Delete a clip by ID — removes the file from disk and the DB entry.
+    pub fn delete_clip(&self, id: i64, clip_path: &str) -> AppResult<()> {
+        // Delete the file from disk (ignore errors if already gone)
+        let _ = std::fs::remove_file(clip_path);
+        // Remove from database
+        self.store.delete_clip(id)
+    }
+
     /// Shut down the mpv child process and clean up resources.
     pub async fn shutdown(&mut self) {
         self.player.shutdown().await;

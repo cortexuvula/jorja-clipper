@@ -36,10 +36,13 @@
 
   function openSettings() {
     settingsOpen = true;
+    api.setMpvVisible(false);
   }
 
   function saveSettings(newSettings: Settings) {
     settings = newSettings;
+    settingsOpen = false;
+    api.setMpvVisible(true);
     // TODO: Persist to backend
   }
 
@@ -97,6 +100,17 @@
       }
     } catch (e) {
       showToast('Clip error: ' + e, 'error');
+    }
+  }
+
+  async function deleteClip(clip: Clip) {
+    try {
+      await api.deleteClip(clip.id, clip.clip_path);
+      const filename = clip.clip_path.split('/').pop() ?? clip.clip_path;
+      showToast('Deleted: ' + filename, 'success');
+      await refreshClips();
+    } catch (e) {
+      showToast('Delete failed: ' + e, 'error');
     }
   }
 
@@ -183,10 +197,13 @@
       <ul class="clip-list">
         {#each clips as clip}
           <li class="clip-item">
-            <div class="clip-name">{clip.clip_path.split('/').pop()}</div>
-            <div class="clip-time">
-              {clip.start_time.toFixed(1)}s — {clip.end_time.toFixed(1)}s
+            <div class="clip-info">
+              <div class="clip-name">{clip.clip_path.split('/').pop()}</div>
+              <div class="clip-time">
+                {clip.start_time.toFixed(1)}s — {clip.end_time.toFixed(1)}s
+              </div>
             </div>
+            <button class="delete-btn" onclick={() => deleteClip(clip)} title="Delete clip">×</button>
           </li>
         {/each}
       </ul>
@@ -204,7 +221,7 @@
   bind:open={settingsOpen}
   bind:settings={settings}
   onsave={saveSettings}
-  oncancel={() => settingsOpen = false}
+  oncancel={() => { settingsOpen = false; api.setMpvVisible(true); }}
 />
 
 <style>
@@ -296,11 +313,42 @@
   }
 
   .clip-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     padding: 0.5rem;
     margin-bottom: 0.5rem;
     background: #1a1a2e;
     border-radius: 4px;
     border-left: 3px solid #e94560;
+  }
+
+  .clip-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .delete-btn {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    margin-left: 0.5rem;
+    background: transparent;
+    color: #888;
+    font-size: 1.2rem;
+    line-height: 1;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .delete-btn:hover {
+    background: #9b2226;
+    color: #fec89a;
   }
 
   .clip-name {

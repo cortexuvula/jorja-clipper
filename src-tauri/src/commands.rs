@@ -91,6 +91,31 @@ pub async fn position_mpv_window(
     }
 }
 
+/// Show or hide the mpv X11 child window (e.g. to let a dialog appear on top).
+#[tauri::command]
+pub async fn set_mpv_visible(
+    state: State<'_, Arc<Mutex<Controller>>>,
+    visible: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut ctrl = state.lock().await;
+        if let Some(window) = &mut ctrl.mpv_window {
+            if visible {
+                window.show()?;
+            } else {
+                window.hide()?;
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        Ok(())
+    }
+}
+
 #[tauri::command]
 pub async fn open_video(
     state: State<'_, Arc<Mutex<Controller>>>,
@@ -140,6 +165,16 @@ pub async fn get_clips(
 ) -> Result<Vec<Clip>, String> {
     let ctrl = state.lock().await;
     ctrl.get_clips().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_clip(
+    state: State<'_, Arc<Mutex<Controller>>>,
+    id: i64,
+    clip_path: String,
+) -> Result<(), String> {
+    let ctrl = state.lock().await;
+    ctrl.delete_clip(id, &clip_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -39,12 +39,14 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::create_mpv_window,
             commands::position_mpv_window,
+            commands::set_mpv_visible,
             commands::open_video,
             commands::toggle_pause,
             commands::seek,
             commands::get_position,
             commands::save_clip,
             commands::get_clips,
+            commands::delete_clip,
             commands::shutdown,
         ])
         .run(tauri::generate_context!())

@@ -8,6 +8,9 @@ export const api = {
   positionMpvWindow: (x: number, y: number, width: number, height: number) =>
     invoke<void>('position_mpv_window', { x, y, width, height }),
 
+  setMpvVisible: (visible: boolean) =>
+    invoke<void>('set_mpv_visible', { visible }),
+
   openVideo: (path: string, wid?: number) =>
     invoke<number>('open_video', { path, wid }),
 
@@ -25,6 +28,9 @@ export const api = {
 
   getClips: () =>
     invoke<Clip[]>('get_clips'),
+
+  deleteClip: (id: number, clipPath: string) =>
+    invoke<void>('delete_clip', { id, clipPath }),
 
   shutdown: () =>
     invoke<void>('shutdown'),
