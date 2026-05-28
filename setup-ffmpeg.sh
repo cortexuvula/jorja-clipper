@@ -80,6 +80,40 @@ download_macos() {
     echo "✓ macOS binaries installed"
 }
 
+# Function to create universal macOS binaries
+create_universal_macos() {
+    echo "Creating universal macOS binaries..."
+
+    local UNIVERSAL_SUFFIX="universal-apple-darwin"
+
+    # Check if universal binaries already exist
+    if [ -f "$BINARIES_DIR/ffmpeg-$UNIVERSAL_SUFFIX" ] && [ -f "$BINARIES_DIR/ffprobe-$UNIVERSAL_SUFFIX" ]; then
+        echo "✓ Universal binaries already exist, skipping creation"
+        if [ "$FORCE_DOWNLOAD" != true ]; then
+            return 0
+        fi
+    fi
+
+    # Note: evermeet.cx only provides x86_64 binaries
+    # For now, we'll use x86_64 binaries for both Intel and Apple Silicon (via Rosetta 2)
+    # Copy x86_64 binaries as "universal" (they work on both via Rosetta 2)
+    echo "Copying x86_64 binaries as universal (works on both Intel and Apple Silicon via Rosetta 2)..."
+
+    if [ ! -f "$BINARIES_DIR/ffmpeg-x86_64-apple-darwin" ] || [ ! -f "$BINARIES_DIR/ffprobe-x86_64-apple-darwin" ]; then
+        echo "✗ Error: x86_64 macOS binaries must be downloaded first"
+        return 1
+    fi
+
+    # Copy x86_64 binaries as universal
+    cp "$BINARIES_DIR/ffmpeg-x86_64-apple-darwin" "$BINARIES_DIR/ffmpeg-$UNIVERSAL_SUFFIX"
+    chmod +x "$BINARIES_DIR/ffmpeg-$UNIVERSAL_SUFFIX"
+
+    cp "$BINARIES_DIR/ffprobe-x86_64-apple-darwin" "$BINARIES_DIR/ffprobe-$UNIVERSAL_SUFFIX"
+    chmod +x "$BINARIES_DIR/ffprobe-$UNIVERSAL_SUFFIX"
+
+    echo "✓ Universal macOS binaries created (x86_64, works on Apple Silicon via Rosetta 2)"
+}
+
 # Function to download Linux binaries
 download_linux() {
     local SUFFIX="x86_64-unknown-linux-gnu"
@@ -204,6 +238,7 @@ if [ "$DOWNLOAD_ALL" = true ]; then
     # Download for all platforms
     download_macos "arm64"
     download_macos "x86_64"
+    create_universal_macos
     download_linux
     download_windows
 else
