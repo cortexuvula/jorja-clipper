@@ -38,10 +38,9 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Build app bundle
-        run: npx tauri build
-        env:
-          # FUSE is unavailable in GitHub runners; extract AppImages instead
-          APPIMAGE_EXTRACT_AND_RUN: 1
+        # AppImage bundling requires FUSE which is unavailable in GitHub
+        # runners; build deb and rpm only (most common Linux package formats)
+        run: npx tauri build --bundles deb rpm
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -49,7 +48,7 @@ jobs:
           name: linux-artifacts
           path: |
             src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/bundle/appimage/*.AppImage
+            src-tauri/target/release/bundle/rpm/*.rpm
 
   release-macos:
     name: Release macOS
