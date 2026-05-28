@@ -127,6 +127,7 @@
     <video
       bind:this={videoElement}
       src={getVideoUrl(videoPath)}
+      controls
       onloadedmetadata={onLoadedMetadata}
       ontimeupdate={onTimeUpdate}
       onplay={() => paused = false}
