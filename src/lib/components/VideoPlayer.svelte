@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
+  import { convertFileSrc } from '@tauri-apps/api/core';
 
   let { videoPath = '', onPositionChange } = $props<{
     videoPath?: string;
@@ -101,8 +102,8 @@
 
   // Convert file path to URL for video element
   function getVideoUrl(path: string): string {
-    // On local filesystem, we need file:// protocol
-    return `file://${path}`;
+    // Use Tauri's asset protocol to access local files
+    return convertFileSrc(path);
   }
 </script>
 
