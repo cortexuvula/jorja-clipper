@@ -7,13 +7,16 @@ Cross-platform desktop app for instant sports highlight extraction.
 - **Instant clipping**: Press a hotkey during video playback to save a lossless clip
 - **Configurable buffers**: Set pre/post buffers for perfect highlight timing
 - **Stream copy**: Uses FFmpeg `-c copy` for instant, lossless clipping
-- **Cross-platform**: Works on Linux (Wayland/X11), Windows, and macOS
+- **Format conversion**: Automatically converts MKV/AVI/TS/MOV to MP4 with progress tracking
+- **Cross-platform**: Works on macOS, Windows, and Linux with identical behavior
+- **Native video controls**: HTML5 video player with play/pause, seek, volume, and fullscreen
 
 ## Tech Stack
 
 - **Backend**: Rust (Tauri 2.0)
 - **Frontend**: Svelte 5 + TypeScript
-- **Video**: mpv (via IPC)
+- **Video**: HTML5 `<video>` element (asset protocol)
+- **Conversion**: FFmpeg (stream copy with transcode fallback)
 - **Clipping**: FFmpeg (subprocess)
 - **Storage**: SQLite
 
@@ -23,8 +26,16 @@ Cross-platform desktop app for instant sports highlight extraction.
 
 - Rust (1.70+)
 - Node.js (18+)
-- mpv
-- FFmpeg
+- FFmpeg (for video conversion and clipping)
+
+**Install FFmpeg:**
+
+- **macOS:** `brew install ffmpeg`
+- **Windows:** Download from https://ffmpeg.org/download.html or `choco install ffmpeg`
+- **Linux:** 
+  - Ubuntu/Debian: `sudo apt install ffmpeg`
+  - Fedora: `sudo dnf install ffmpeg`
+  - Arch: `sudo pacman -S ffmpeg`
 
 ### Linux Dependencies
 
@@ -63,11 +74,26 @@ npm run tauri build
 
 The app follows a three-layer architecture:
 
-1. **Rust Backend**: Business logic, FFmpeg integration, mpv process management
+1. **Rust Backend**: Business logic, FFmpeg integration, video format conversion
 2. **Tauri IPC**: Type-safe command interface
-3. **Svelte Frontend**: UI rendering, user input
+3. **Svelte Frontend**: UI rendering, HTML5 video playback, user input
 
-mpv runs as a child process with `--wid` embedding managed by Tauri's windowing layer, providing reliable video embedding on all platforms including Linux Wayland.
+Video playback uses the HTML5 `<video>` element with Tauri's asset protocol (`convertFileSrc()`). Web-compatible formats (MP4, WebM, Ogg) play directly. Non-web formats (MKV, AVI, TS, MOV) are automatically converted to MP4 using FFmpeg, with real-time progress tracking. Converted files are cached for faster re-opening.
+
+## Supported Video Formats
+
+**Direct playback (no conversion):**
+- MP4, M4V
+- WebM
+- Ogg, OGV
+
+**Automatic conversion to MP4:**
+- MKV
+- AVI
+- TS
+- MOV
+
+Conversion uses stream copy (fast, lossless) when possible, falling back to transcode (slower, high quality) when needed.
 
 ## License
 
