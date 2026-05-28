@@ -89,10 +89,7 @@ impl Player {
             cmd.env_remove("WAYLAND_DISPLAY");
         }
 
-        let child = cmd
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
+        let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
 
         self.process = Some(child);
 
@@ -217,12 +214,8 @@ impl Player {
             .to_str()
             .ok_or_else(|| AppError::MpvIpc("Invalid path (not valid UTF-8)".to_string()))?;
 
-        self.send_command(vec![
-            "loadfile".into(),
-            path_str.into(),
-            "replace".into(),
-        ])
-        .await?;
+        self.send_command(vec!["loadfile".into(), path_str.into(), "replace".into()])
+            .await?;
 
         // Wait for the file to finish loading before querying duration
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -263,12 +256,8 @@ impl Player {
     pub async fn seek(&self, seconds: f64, relative: bool) -> AppResult<()> {
         let mode = if relative { "relative" } else { "absolute" };
 
-        self.send_command(vec![
-            "seek".into(),
-            seconds.into(),
-            mode.into(),
-        ])
-        .await?;
+        self.send_command(vec!["seek".into(), seconds.into(), mode.into()])
+            .await?;
 
         Ok(())
     }

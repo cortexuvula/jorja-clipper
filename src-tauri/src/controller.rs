@@ -3,7 +3,7 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use crate::x11_window::X11Window;
 
-use crate::clipper::{Clipper, ClipResult};
+use crate::clipper::{ClipResult, Clipper};
 use crate::error::{AppError, AppResult};
 use crate::player::Player;
 use crate::settings::Settings;

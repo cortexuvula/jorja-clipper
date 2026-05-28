@@ -2,8 +2,8 @@
 use x11rb::{
     connection::Connection,
     protocol::xproto::{
-        ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, CreateWindowAux,
-        Screen, WindowClass,
+        ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, CreateWindowAux, Screen,
+        WindowClass,
     },
     rust_connection::RustConnection,
     wrapper::ConnectionExt as _,
@@ -23,13 +23,15 @@ pub struct X11Window {
 impl X11Window {
     /// Create a new X11 child window inside the given parent window
     pub fn create_child(parent_window_id: u32) -> Result<Self, String> {
-        let (conn, screen_num) =
-            RustConnection::connect(None).map_err(|e| format!("Failed to connect to X11: {}", e))?;
+        let (conn, screen_num) = RustConnection::connect(None)
+            .map_err(|e| format!("Failed to connect to X11: {}", e))?;
 
         let screen = &conn.setup().roots[screen_num];
 
         // Create child window
-        let window_id = conn.generate_id().map_err(|e| format!("Failed to generate window ID: {}", e))?;
+        let window_id = conn
+            .generate_id()
+            .map_err(|e| format!("Failed to generate window ID: {}", e))?;
 
         let win_aux = CreateWindowAux::new()
             .background_pixel(screen.white_pixel)
@@ -51,7 +53,8 @@ impl X11Window {
         )
         .map_err(|e| format!("Failed to create window: {}", e))?;
 
-        conn.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+        conn.flush()
+            .map_err(|e| format!("Failed to flush: {}", e))?;
 
         Ok(Self {
             conn,
@@ -79,7 +82,9 @@ impl X11Window {
             .configure_window(self.window_id, &aux)
             .map_err(|e| format!("Failed to configure window: {}", e))?;
 
-        self.conn.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+        self.conn
+            .flush()
+            .map_err(|e| format!("Failed to flush: {}", e))?;
         Ok(())
     }
 
@@ -89,7 +94,9 @@ impl X11Window {
             self.conn
                 .map_window(self.window_id)
                 .map_err(|e| format!("Failed to map window: {}", e))?;
-            self.conn.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+            self.conn
+                .flush()
+                .map_err(|e| format!("Failed to flush: {}", e))?;
             self.mapped = true;
         }
         Ok(())
@@ -101,7 +108,9 @@ impl X11Window {
             self.conn
                 .unmap_window(self.window_id)
                 .map_err(|e| format!("Failed to unmap window: {}", e))?;
-            self.conn.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+            self.conn
+                .flush()
+                .map_err(|e| format!("Failed to flush: {}", e))?;
             self.mapped = false;
         }
         Ok(())

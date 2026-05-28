@@ -24,7 +24,8 @@ pub async fn create_mpv_window(
         use tauri::Manager;
 
         // Get the main window
-        let main_window = app.get_webview_window("main")
+        let main_window = app
+            .get_webview_window("main")
             .ok_or("Main window not found")?;
 
         // Get the X11 window ID of the main window
@@ -123,46 +124,37 @@ pub async fn open_video(
     wid: Option<u64>,
 ) -> Result<f64, String> {
     let mut ctrl = state.lock().await;
-    ctrl.open_video(PathBuf::from(&path), wid).await.map_err(|e| e.to_string())
+    ctrl.open_video(PathBuf::from(&path), wid)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn toggle_pause(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<(), String> {
+pub async fn toggle_pause(state: State<'_, Arc<Mutex<Controller>>>) -> Result<(), String> {
     let ctrl = state.lock().await;
     ctrl.toggle_pause().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn seek(
-    state: State<'_, Arc<Mutex<Controller>>>,
-    seconds: f64,
-) -> Result<(), String> {
+pub async fn seek(state: State<'_, Arc<Mutex<Controller>>>, seconds: f64) -> Result<(), String> {
     let ctrl = state.lock().await;
     ctrl.seek(seconds).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_position(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<f64, String> {
+pub async fn get_position(state: State<'_, Arc<Mutex<Controller>>>) -> Result<f64, String> {
     let ctrl = state.lock().await;
     ctrl.get_position().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn save_clip(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<ClipResult, String> {
+pub async fn save_clip(state: State<'_, Arc<Mutex<Controller>>>) -> Result<ClipResult, String> {
     let mut ctrl = state.lock().await;
     ctrl.save_clip().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn get_clips(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<Vec<Clip>, String> {
+pub async fn get_clips(state: State<'_, Arc<Mutex<Controller>>>) -> Result<Vec<Clip>, String> {
     let ctrl = state.lock().await;
     ctrl.get_clips().map_err(|e| e.to_string())
 }
@@ -178,9 +170,7 @@ pub async fn delete_clip(
 }
 
 #[tauri::command]
-pub async fn shutdown(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<(), String> {
+pub async fn shutdown(state: State<'_, Arc<Mutex<Controller>>>) -> Result<(), String> {
     let mut ctrl = state.lock().await;
     ctrl.shutdown().await;
     Ok(())

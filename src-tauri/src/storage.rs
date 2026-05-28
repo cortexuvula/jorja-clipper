@@ -86,7 +86,13 @@ impl ClipStore {
         conn.execute(
             "INSERT INTO clips (video_path, clip_path, start_time, end_time, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![video_path, clip_path, start_time, end_time, created_at.to_rfc3339()],
+            params![
+                video_path,
+                clip_path,
+                start_time,
+                end_time,
+                created_at.to_rfc3339()
+            ],
         )?;
 
         let id = conn.last_insert_rowid();
@@ -115,8 +121,13 @@ impl ClipStore {
 
         let clips = stmt.query_map(params![video_path], |row| {
             let created_str: String = row.get(5)?;
-            let created_at = parse_datetime(&created_str)
-                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
+            let created_at = parse_datetime(&created_str).map_err(|e| {
+                rusqlite::Error::FromSqlConversionFailure(
+                    5,
+                    rusqlite::types::Type::Text,
+                    Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
+                )
+            })?;
             Ok(Clip {
                 id: row.get(0)?,
                 video_path: row.get(1)?,
@@ -177,9 +188,7 @@ mod tests {
         assert_eq!(clip.start_time, 10.0);
         assert_eq!(clip.end_time, 20.0);
 
-        let clips = store
-            .get_clips_for_video("/path/to/video.mp4")
-            .unwrap();
+        let clips = store.get_clips_for_video("/path/to/video.mp4").unwrap();
         assert_eq!(clips.len(), 1);
         assert_eq!(clips[0].clip_path, "/path/to/clip.mp4");
 
@@ -206,9 +215,7 @@ mod tests {
 
         store.delete_clip(clip.id).unwrap();
 
-        let clips = store
-            .get_clips_for_video("/path/to/video.mp4")
-            .unwrap();
+        let clips = store.get_clips_for_video("/path/to/video.mp4").unwrap();
         assert_eq!(clips.len(), 0);
 
         let _ = std::fs::remove_dir_all(&temp_dir);
