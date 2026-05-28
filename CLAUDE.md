@@ -12,10 +12,13 @@ Jorja Clipper is a cross-platform desktop app built with **Tauri 2** (Rust backe
 # Install dependencies
 npm install
 
+# Setup FFmpeg sidecar binaries (required before building releases)
+./setup-ffmpeg.sh
+
 # Run the app in development mode
 cargo tauri dev
 
-# Build a release bundle
+# Build a release bundle (run setup-ffmpeg.sh first)
 cargo tauri build
 
 # Run Rust tests
@@ -39,6 +42,7 @@ src-tauri/src/
   ├── commands.rs      — #[tauri::command] handlers exposed to the frontend
   ├── settings.rs      — Settings: JSON config (~/.config/jorja-clipper/config.json)
   ├── storage.rs       — Storage: SQLite via rusqlite (bundled) for clip history
+  ├── util.rs          — Binary path resolution (sidecar + system PATH + macOS homebrew fallback)
   └── error.rs         — AppError enum with thiserror
 
 src/
@@ -56,6 +60,8 @@ src/
 
 **Video playback:** Uses HTML5 `<video>` element in the webview. Web-compatible formats (MP4, WebM, Ogg, OGV, M4V) play directly via Tauri's asset protocol (`convertFileSrc()`). Non-web formats (MKV, AVI, TS, MOV) are converted to MP4 using FFmpeg with real-time progress tracking. Converted files are cached in `~/.config/jorja-clipper/clips/` for faster re-opening.
 
+**FFmpeg sidecar:** FFmpeg and ffprobe binaries are bundled as sidecar executables (see `setup-ffmpeg.sh`). The `util` module resolves binary paths: sidecar first, then system PATH with macOS homebrew fallback.
+
 ## Configuration
 
 - **Settings:** `~/.config/jorja-clipper/config.json`
@@ -64,16 +70,17 @@ src/
 
 ## Platform Notes
 
-**All platforms require FFmpeg to be installed and available in PATH:**
+**FFmpeg is bundled as a sidecar binary** - users don't need to install it separately. Run `./setup-ffmpeg.sh` before building release packages to download platform-specific binaries.
 
-- **macOS:** `brew install ffmpeg`
-- **Windows:** Download from https://ffmpeg.org/download.html or `choco install ffmpeg`
-- **Linux:** 
-  - Ubuntu/Debian: `sudo apt install ffmpeg`
-  - Fedora: `sudo dnf install ffmpeg`
-  - Arch: `sudo pacman -S ffmpeg`
+**Development requirements:**
+- **macOS:** No additional dependencies needed (FFmpeg will be bundled)
+- **Windows:** No additional dependencies needed (FFmpeg will be bundled)
+- **Linux:** Requires Tauri system deps for building (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`, `libjavascriptcoregtk-4.1-dev`, `libayatana-appindicator3-dev`)
 
-**Linux build dependencies:** Requires Tauri system deps (`libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libsoup-3.0-dev`, `libjavascriptcoregtk-4.1-dev`, `libayatana-appindicator3-dev`).
+**Runtime behavior:**
+- App uses bundled FFmpeg sidecar if available
+- Falls back to system PATH if sidecar not found (useful during development)
+- On macOS, also checks homebrew paths (`/opt/homebrew/bin`, `/usr/local/bin`)
 
 ## Testing
 

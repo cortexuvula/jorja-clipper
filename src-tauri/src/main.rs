@@ -24,6 +24,11 @@ async fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            // Initialize sidecar paths for bundled FFmpeg binaries
+            util::init_sidecar_paths(app.handle());
+            Ok(())
+        })
         .manage(controller)
         .invoke_handler(tauri::generate_handler![
             commands::open_video,
