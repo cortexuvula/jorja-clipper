@@ -6,12 +6,9 @@
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
   import type { Settings, Clip } from '$lib/types';
 
-  let videoLoaded = $state(false);
   let videoPath = $state('');
   let duration = $state(0);
   let position = $state(0);
-  let paused = $state(true);
-  let mpvWid: number | undefined = $state(undefined);
   let clips: Clip[] = $state([]);
 
   // Toast notification state
@@ -36,13 +33,11 @@
 
   function openSettings() {
     settingsOpen = true;
-    api.setMpvVisible(false);
   }
 
   function saveSettings(newSettings: Settings) {
     settings = newSettings;
     settingsOpen = false;
-    api.setMpvVisible(true);
     // TODO: Persist to backend
   }
 
@@ -64,33 +59,26 @@
     });
 
     if (selected) {
-      videoPath = selected;
       try {
-        duration = await api.openVideo(selected, mpvWid);
+        const response = await api.openVideo(selected);
+        videoPath = response.play_path;
+        duration = response.duration;
+        await refreshClips();
       } catch (e) {
         showToast('Failed to open video: ' + e, 'error');
-        return;
       }
-      videoLoaded = true;
-      paused = true;
-      await refreshClips();
     }
   }
 
-  async function togglePause() {
-    await api.togglePause();
-    paused = !paused;
-  }
-
-  async function seek(seconds: number) {
-    await api.seek(seconds);
-    position = await api.getPosition();
+  function onPositionChange(newPosition: number, newDuration: number) {
+    position = newPosition;
+    duration = newDuration;
   }
 
   async function saveClip() {
-    if (!videoLoaded) return;
+    if (!videoPath) return;
     try {
-      const result = await api.saveClip();
+      const result = await api.saveClip(position, duration);
       if (result.success) {
         const filename = result.path.split('/').pop() ?? result.path;
         showToast('Clip saved: ' + filename, 'success');
@@ -114,53 +102,36 @@
     }
   }
 
-  // Position polling loop
-  let pollInterval: ReturnType<typeof setInterval> | null = null;
+  // Clips refresh interval
   let clipsRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
     // Register global shortcuts
     const handleKeydown = async (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return; // Don't intercept when typing
+      }
+
       if (e.key === 'o' || e.key === 'O') {
         await openVideo();
-      } else if (e.key === ' ') {
-        e.preventDefault();
-        await togglePause();
       } else if (e.key === 'c' || e.key === 'C') {
         await saveClip();
-      } else if (e.key === 'ArrowLeft') {
-        await seek(e.shiftKey ? -1 : -5);
-      } else if (e.key === 'ArrowRight') {
-        await seek(e.shiftKey ? 1 : 5);
       }
     };
 
     window.addEventListener('keydown', handleKeydown);
 
-    // Poll for position updates every 200ms
-    pollInterval = setInterval(async () => {
-      if (videoLoaded && !paused) {
-        try {
-          position = await api.getPosition();
-        } catch (e) {
-          // ignore polling errors
-        }
-      }
-    }, 200);
-
     // Refresh clips list every 3 seconds to detect manual deletions
     clipsRefreshInterval = setInterval(async () => {
-      if (videoLoaded) {
+      if (videoPath) {
         await refreshClips();
       }
     }, 3000);
 
     return () => {
       window.removeEventListener('keydown', handleKeydown);
-      if (pollInterval) clearInterval(pollInterval);
       if (clipsRefreshInterval) clearInterval(clipsRefreshInterval);
       if (toastTimeout) clearTimeout(toastTimeout);
-      api.shutdown();
     };
   });
 </script>
@@ -168,21 +139,18 @@
 <div class="main-layout">
   <div class="video-section">
     <div class="video-wrapper">
-      <VideoPlayer {videoLoaded} onMpvWindowCreated={(wid) => mpvWid = wid} />
+      <VideoPlayer {videoPath} {onPositionChange} />
     </div>
 
     <div class="controls">
       <button onclick={openVideo}>Open (O)</button>
-      <button onclick={togglePause} disabled={!videoLoaded}>
-        {paused ? 'Play' : 'Pause'} (Space)
-      </button>
-      <button onclick={saveClip} disabled={!videoLoaded}>
+      <button onclick={saveClip} disabled={!videoPath}>
         Clip (C)
       </button>
       <button onclick={openSettings}>Settings</button>
     </div>
 
-    {#if videoLoaded}
+    {#if videoPath}
       <div class="status">
         Position: {position.toFixed(1)}s / {duration.toFixed(1)}s
       </div>
@@ -192,7 +160,7 @@
   <div class="clips-section">
     <h2>Saved Clips ({clips.length})</h2>
     {#if clips.length === 0}
-      <p class="placeholder">{videoLoaded ? 'No clips yet — press C to save one' : 'Open a video to see clips'}</p>
+      <p class="placeholder">{videoPath ? 'No clips yet — press C to save one' : 'Open a video to see clips'}</p>
     {:else}
       <ul class="clip-list">
         {#each clips as clip}
@@ -221,7 +189,7 @@
   bind:open={settingsOpen}
   bind:settings={settings}
   onsave={saveSettings}
-  oncancel={() => { settingsOpen = false; api.setMpvVisible(true); }}
+  oncancel={() => { settingsOpen = false; }}
 />
 
 <style>

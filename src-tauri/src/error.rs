@@ -5,8 +5,8 @@ pub enum AppError {
     #[error("FFmpeg error: {0}")]
     Ffmpeg(String),
 
-    #[error("mpv IPC error: {0}")]
-    MpvIpc(String),
+    #[error("Clip error: {0}")]
+    Clip(String),
 
     #[error("Storage error: {0}")]
     Storage(String),

@@ -1,25 +1,31 @@
 use std::path::PathBuf;
-
-#[cfg(target_os = "linux")]
-use crate::x11_window::X11Window;
-
-#[cfg(target_os = "macos")]
-use crate::ns_view::NsView;
+use tokio::sync::mpsc;
 
 use crate::clipper::{ClipResult, Clipper};
+use crate::converter::{ConversionStatus, Converter};
 use crate::error::{AppError, AppResult};
-use crate::player::Player;
 use crate::settings::Settings;
 use crate::storage::{Clip, ClipStore};
+
+/// Response from opening a video, includes path to play and metadata
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OpenVideoResponse {
+    /// Path to the video file to play (may be converted)
+    pub play_path: String,
+    /// Original source path (for clipping)
+    pub source_path: String,
+    /// Video duration in seconds
+    pub duration: f64,
+    /// Whether conversion was performed
+    pub converted: bool,
+}
 
 /// Central orchestrator that owns all backend components.
 ///
 /// The controller is the single entry point for every high-level operation
-/// (opening a video, saving a clip, seeking, etc.). The GUI/frontend never
-/// touches Player, Clipper, Settings, or ClipStore directly — it always goes
-/// through the controller.
+/// (opening a video, saving a clip, etc.). The GUI/frontend never touches
+/// Clipper, Settings, or ClipStore directly — it always goes through the controller.
 pub struct Controller {
-    pub player: Player,
     pub clipper: Clipper,
     #[allow(dead_code)]
     pub settings: Settings,
@@ -27,11 +33,7 @@ pub struct Controller {
     pub current_video: Option<PathBuf>,
     pub clip_count: i32,
     pub is_clipping: bool,
-    #[cfg(target_os = "linux")]
-    pub mpv_window: Option<X11Window>,
-    #[cfg(target_os = "macos")]
-    pub mpv_ns_view: Option<NsView>,
-    pub mpv_wid: Option<u64>,
+    pub clips_dir: PathBuf,
 }
 
 impl Controller {
@@ -41,71 +43,87 @@ impl Controller {
         let settings = Settings::load()?;
         let store = ClipStore::new()?;
         let clipper = Clipper::new(settings.buffer_before, settings.buffer_after);
-        let player = Player::new();
+
+        // Use clips directory for converted files
+        let clips_dir = dirs::config_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("jorja-clipper")
+            .join("clips");
+
+        // Create clips directory if it doesn't exist
+        if !clips_dir.exists() {
+            std::fs::create_dir_all(&clips_dir)
+                .map_err(|e| AppError::Io(e))?;
+        }
 
         Ok(Self {
-            player,
             clipper,
             settings,
             store,
             current_video: None,
             clip_count: 0,
             is_clipping: false,
-            #[cfg(target_os = "linux")]
-            mpv_window: None,
-            #[cfg(target_os = "macos")]
-            mpv_ns_view: None,
-            mpv_wid: None,
+            clips_dir,
         })
     }
 
-    /// Open a video file in mpv, spawning the player on first call.
+    /// Open a video file, converting if necessary for web playback.
     ///
-    /// Returns the duration of the loaded video in seconds. Also reloads
-    /// any previously saved clips for this video from the database.
-    pub async fn open_video(&mut self, path: PathBuf, wid: Option<u64>) -> AppResult<f64> {
-        // Use stored mpv window ID if no wid provided
-        let wid = wid.or(self.mpv_wid);
+    /// Returns information about the video including the path to play and duration.
+    /// Emits progress updates via the channel for non-web formats that need conversion.
+    pub async fn open_video(
+        &mut self,
+        path: PathBuf,
+        progress_tx: Option<mpsc::Sender<ConversionStatus>>,
+    ) -> AppResult<OpenVideoResponse> {
+        let source_path = path.clone();
 
-        // Spawn mpv if not already running
-        if !self.player.is_running() {
-            self.player.spawn(wid).await?;
-        }
+        // Check if file is web-compatible
+        let (play_path, converted) = if Converter::is_web_compatible(&path) {
+            // Direct play, no conversion needed
+            (path.clone(), false)
+        } else {
+            // Need to convert
+            let progress_tx = progress_tx.ok_or_else(|| {
+                AppError::Clip("Progress channel required for conversion".to_string())
+            })?;
 
-        let duration = self.player.load(&path).await?;
-        self.current_video = Some(path.clone());
+            let converted_path =
+                Converter::convert_to_mp4(&path, &self.clips_dir, progress_tx).await?;
+
+            (converted_path, true)
+        };
+
+        // Get duration using ffprobe
+        let duration = Converter::get_duration(&source_path).await?;
+
+        // Store the original source path for clipping
+        self.current_video = Some(source_path.clone());
 
         // Load clips for this video
         let clips = self
             .store
-            .get_clips_for_video(path.to_str().unwrap_or(""))?;
+            .get_clips_for_video(source_path.to_str().unwrap_or(""))?;
         self.clip_count = clips.len() as i32;
 
-        Ok(duration)
+        Ok(OpenVideoResponse {
+            play_path: play_path.to_string_lossy().to_string(),
+            source_path: source_path.to_string_lossy().to_string(),
+            duration,
+            converted,
+        })
     }
 
-    /// Toggle the pause state of the currently loaded video.
-    pub async fn toggle_pause(&self) -> AppResult<()> {
-        self.player.toggle_pause().await
-    }
-
-    /// Seek by the given number of seconds (relative).
-    pub async fn seek(&self, seconds: f64) -> AppResult<()> {
-        self.player.seek(seconds, true).await
-    }
-
-    /// Return the current playback position in seconds.
-    pub async fn get_position(&self) -> AppResult<f64> {
-        self.player.get_position().await
-    }
-
-    /// Save a clip around the current playback position.
+    /// Save a clip at the specified position.
     ///
     /// Uses the configured pre/post buffers to calculate the clip window.
-    /// Rejects the request if a clip is already being saved or no video is
-    /// loaded. The `is_clipping` flag is always reset, even when the inner
-    /// operation fails.
-    pub async fn save_clip(&mut self) -> AppResult<ClipResult> {
+    /// Rejects the request if a clip is already being saved or no video is loaded.
+    /// The `is_clipping` flag is always reset, even when the operation fails.
+    pub async fn save_clip(
+        &mut self,
+        current_pos: f64,
+        duration: f64,
+    ) -> AppResult<ClipResult> {
         if self.is_clipping {
             return Err(AppError::ClipInProgress);
         }
@@ -119,9 +137,6 @@ impl Controller {
         self.is_clipping = true;
 
         let result = async {
-            let current_pos = self.player.get_position().await?;
-            let duration = self.player.get_duration().await?;
-
             let (start_time, end_time) = self.clipper.calculate_times(current_pos, duration);
             let clip_number = self.clip_count + 1;
             let output_path = self.clipper.output_path(&video_path, clip_number)?;
@@ -183,20 +198,5 @@ impl Controller {
         let _ = std::fs::remove_file(clip_path);
         // Remove from database
         self.store.delete_clip(id)
-    }
-
-    /// Shut down the mpv child process and clean up resources.
-    pub async fn shutdown(&mut self) {
-        self.player.shutdown().await;
-        #[cfg(target_os = "linux")]
-        {
-            // Drop will destroy the X11 window
-            self.mpv_window.take();
-        }
-        #[cfg(target_os = "macos")]
-        {
-            // Drop will remove the NSView from its parent
-            self.mpv_ns_view.take();
-        }
     }
 }
