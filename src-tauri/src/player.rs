@@ -2,13 +2,22 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::net::UnixStream;
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
+#[cfg(unix)]
+use tokio::net::UnixStream;
+
+#[cfg(windows)]
+use tokio::net::windows::named_pipe::ClientOptions;
+
 use crate::error::{AppError, AppResult};
 
+#[cfg(unix)]
 const IPC_SOCKET: &str = "/tmp/jorja-mpv-socket";
+
+#[cfg(windows)]
+const IPC_PIPE: &str = r"\\.\pipe\jorja-mpv-socket";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MpvRequest {
@@ -21,9 +30,15 @@ struct MpvResponse {
     data: Option<serde_json::Value>,
 }
 
+#[cfg(unix)]
+type IpcStream = UnixStream;
+
+#[cfg(windows)]
+type IpcStream = tokio::net::windows::named_pipe::NamedPipeClient;
+
 pub struct Player {
     process: Option<Child>,
-    socket: Mutex<Option<UnixStream>>,
+    socket: Mutex<Option<IpcStream>>,
 }
 
 impl Player {
@@ -52,13 +67,17 @@ impl Player {
         *self.socket.lock().await = None;
 
         // Clean up stale socket from a previous run
+        #[cfg(unix)]
         let _ = std::fs::remove_file(IPC_SOCKET);
 
         let mut cmd = Command::new("mpv");
         cmd.args(&[
             "--idle",
             "--force-window",
-            "--input-ipc-server=/tmp/jorja-mpv-socket",
+            #[cfg(unix)]
+            &format!("--input-ipc-server={}", IPC_SOCKET),
+            #[cfg(windows)]
+            &format!("--input-ipc-server={}", IPC_PIPE),
         ]);
 
         if let Some(wid) = wid {
@@ -66,6 +85,7 @@ impl Player {
             // Prevent mpv from opening its own Wayland window when embedding.
             // env_remove only affects the child's cloned environment — the
             // parent process keeps WAYLAND_DISPLAY untouched.
+            #[cfg(unix)]
             cmd.env_remove("WAYLAND_DISPLAY");
         }
 
@@ -86,6 +106,7 @@ impl Player {
     }
 
     /// Retry connecting to the mpv IPC socket with exponential-ish backoff.
+    #[cfg(unix)]
     async fn connect_ipc(&self) -> AppResult<()> {
         let max_attempts = 10;
 
@@ -99,6 +120,32 @@ impl Player {
                     if attempt >= max_attempts {
                         return Err(AppError::MpvIpc(format!(
                             "Failed to connect to mpv IPC socket after {} attempts: {}",
+                            max_attempts, e
+                        )));
+                    }
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                }
+            }
+        }
+
+        unreachable!()
+    }
+
+    /// Retry connecting to the mpv IPC named pipe with exponential-ish backoff.
+    #[cfg(windows)]
+    async fn connect_ipc(&self) -> AppResult<()> {
+        let max_attempts = 10;
+
+        for attempt in 1..=max_attempts {
+            match ClientOptions::new().open(IPC_PIPE) {
+                Ok(stream) => {
+                    *self.socket.lock().await = Some(stream);
+                    return Ok(());
+                }
+                Err(e) => {
+                    if attempt >= max_attempts {
+                        return Err(AppError::MpvIpc(format!(
+                            "Failed to connect to mpv IPC pipe after {} attempts: {}",
                             max_attempts, e
                         )));
                     }
@@ -231,6 +278,7 @@ impl Player {
         if let Some(mut child) = self.process.take() {
             let _ = child.kill().await;
         }
+        #[cfg(unix)]
         let _ = std::fs::remove_file(IPC_SOCKET);
     }
 }
@@ -242,6 +290,7 @@ impl Drop for Player {
         if let Some(mut child) = self.process.take() {
             let _ = child.start_kill();
         }
+        #[cfg(unix)]
         let _ = std::fs::remove_file(IPC_SOCKET);
     }
 }
