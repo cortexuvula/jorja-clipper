@@ -3,6 +3,9 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use crate::x11_window::X11Window;
 
+#[cfg(target_os = "macos")]
+use crate::ns_view::NsView;
+
 use crate::clipper::{ClipResult, Clipper};
 use crate::error::{AppError, AppResult};
 use crate::player::Player;
@@ -26,6 +29,8 @@ pub struct Controller {
     pub is_clipping: bool,
     #[cfg(target_os = "linux")]
     pub mpv_window: Option<X11Window>,
+    #[cfg(target_os = "macos")]
+    pub mpv_ns_view: Option<NsView>,
     pub mpv_wid: Option<u64>,
 }
 
@@ -48,6 +53,8 @@ impl Controller {
             is_clipping: false,
             #[cfg(target_os = "linux")]
             mpv_window: None,
+            #[cfg(target_os = "macos")]
+            mpv_ns_view: None,
             mpv_wid: None,
         })
     }
@@ -185,6 +192,11 @@ impl Controller {
         {
             // Drop will destroy the X11 window
             self.mpv_window.take();
+        }
+        #[cfg(target_os = "macos")]
+        {
+            // Drop will remove the NSView from its parent
+            self.mpv_ns_view.take();
         }
     }
 }

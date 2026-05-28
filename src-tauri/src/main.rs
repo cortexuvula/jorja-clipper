@@ -7,8 +7,11 @@ mod error;
 mod player;
 mod settings;
 mod storage;
+mod util;
 #[cfg(target_os = "linux")]
 mod x11_window;
+#[cfg(target_os = "macos")]
+mod ns_view;
 
 use std::sync::Arc;
 

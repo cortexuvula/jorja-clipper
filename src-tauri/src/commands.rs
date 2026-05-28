@@ -60,9 +60,65 @@ pub async fn create_mpv_window(
         Ok(wid)
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
-        Err("X11 windows only supported on Linux".to_string())
+        use raw_window_handle::HasWindowHandle;
+        use tauri::Manager;
+
+        // Get the main window
+        let main_window = app
+            .get_webview_window("main")
+            .ok_or("Main window not found")?;
+
+        // Get the NSView pointer from raw-window-handle and extract contentView
+        // Must extract before any .await since WindowHandle is !Send
+        let content_view_ptr = {
+            let main_window = app
+                .get_webview_window("main")
+                .ok_or("Main window not found")?;
+
+            let ns_view_ptr = {
+                let handle = main_window
+                    .window_handle()
+                    .map_err(|e| format!("Failed to get window handle: {}", e))?;
+
+                match handle.as_raw() {
+                    raw_window_handle::RawWindowHandle::AppKit(h) => h.ns_view.as_ptr(),
+                    other => return Err(format!("Unsupported window handle type: {:?}", other)),
+                }
+            };
+
+            // Get the contentView from the NSWindow
+            unsafe {
+                let ns_view: *mut objc2_app_kit::NSView = ns_view_ptr as *mut _;
+                let window: *mut objc2_app_kit::NSWindow = objc2::msg_send![ns_view, window];
+                let content_view: *mut objc2_app_kit::NSView = objc2::msg_send![window, contentView];
+                content_view as u64 // Convert to u64 to make it Send
+            }
+        };
+
+        // Close any existing mpv window
+        {
+            let mut ctrl = state.lock().await;
+            ctrl.mpv_ns_view.take(); // Drop will remove the NSView
+        }
+
+        // Create NSView child
+        let content_view = content_view_ptr as *mut objc2_app_kit::NSView;
+        let ns_view = crate::ns_view::NsView::create_child(content_view)?;
+        let wid = ns_view.view_id();
+
+        // Store the NSView reference
+        let mut ctrl = state.lock().await;
+        ctrl.mpv_ns_view = Some(ns_view);
+        ctrl.mpv_wid = Some(wid);
+
+        Ok(wid)
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        Err("Video embedding only supported on Linux and macOS".to_string())
     }
 }
 
@@ -86,8 +142,19 @@ pub async fn position_mpv_window(
         Ok(())
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
+        let mut ctrl = state.lock().await;
+        if let Some(ns_view) = &mut ctrl.mpv_ns_view {
+            ns_view.configure(x as i32, y as i32, width as u32, height as u32)?;
+            ns_view.show()?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = (x, y, width, height);
         Ok(())
     }
 }
@@ -111,8 +178,22 @@ pub async fn set_mpv_visible(
         Ok(())
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
+        let mut ctrl = state.lock().await;
+        if let Some(ns_view) = &mut ctrl.mpv_ns_view {
+            if visible {
+                ns_view.show()?;
+            } else {
+                ns_view.hide()?;
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        let _ = visible;
         Ok(())
     }
 }

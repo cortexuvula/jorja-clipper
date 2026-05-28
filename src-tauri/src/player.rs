@@ -70,7 +70,7 @@ impl Player {
         #[cfg(unix)]
         let _ = std::fs::remove_file(IPC_SOCKET);
 
-        let mut cmd = Command::new("mpv");
+        let mut cmd = Command::new(crate::util::resolve_binary("mpv"));
         cmd.args([
             "--idle",
             "--force-window",
@@ -89,7 +89,19 @@ impl Player {
             cmd.env_remove("WAYLAND_DISPLAY");
         }
 
-        let child = cmd.stdout(Stdio::null()).stderr(Stdio::null()).spawn()?;
+        let child = cmd
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::MpvIpc(
+                        "mpv not found. Install it with: brew install mpv".to_string(),
+                    )
+                } else {
+                    AppError::Io(e)
+                }
+            })?;
 
         self.process = Some(child);
 

@@ -58,7 +58,7 @@ impl Clipper {
         output_path: &Path,
     ) -> AppResult<ClipResult> {
         // Verify FFmpeg is available
-        let ffmpeg_check = Command::new("ffmpeg")
+        let ffmpeg_check = Command::new(crate::util::resolve_binary("ffmpeg"))
             .arg("-version")
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -72,7 +72,7 @@ impl Clipper {
         }
 
         // Run FFmpeg with stream copy (lossless)
-        let output = Command::new("ffmpeg")
+        let output = Command::new(crate::util::resolve_binary("ffmpeg"))
             .args([
                 "-y", // Overwrite output
                 "-ss",

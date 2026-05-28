@@ -9,6 +9,12 @@ pub struct NsView {
     parent: Retained<NSView>,
 }
 
+// Safety: NSView is a reference-counted Objective-C object that can be safely
+// sent between threads. We only access it from the main thread in practice
+// (via Tauri commands), but the type system needs this for Arc<Mutex<Controller>>.
+unsafe impl Send for NsView {}
+unsafe impl Sync for NsView {}
+
 impl NsView {
     /// Create a child NSView inside the given parent NSView.
     /// `parent_ns_view` is the raw pointer from raw-window-handle's AppKitWindowHandle.
@@ -27,16 +33,18 @@ impl NsView {
         // Create child view with zero frame (will be configured later)
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1.0, 1.0));
         let view = unsafe {
-            let allocated: Retained<NSView> = msg_send![NSView::class(), alloc];
-            let initialized: Retained<NSView> = msg_send![allocated, initWithFrame: frame];
-            initialized
+            // Allocate and initialize using raw msg_send
+            let alloc: *mut NSView = msg_send![NSView::class(), alloc];
+            let init: *mut NSView = msg_send![alloc, initWithFrame: frame];
+            Retained::retain(init).ok_or_else(|| "Failed to retain child NSView".to_string())?
         };
 
         // Set black background
         unsafe {
             let black = NSColor::blackColor();
-            let _: () = msg_send![&view, setWantsLayer: true];
-            let layer: *mut AnyObject = msg_send![&view, layer];
+            let view_ptr = Retained::as_ptr(&view);
+            let _: () = msg_send![view_ptr, setWantsLayer: true];
+            let layer: *mut AnyObject = msg_send![view_ptr, layer];
             if !layer.is_null() {
                 let cg_black: *mut AnyObject = msg_send![&black, CGColor];
                 let _: () = msg_send![layer, setBackgroundColor: cg_black];
@@ -45,7 +53,9 @@ impl NsView {
 
         // Add as subview
         unsafe {
-            let _: () = msg_send![&parent, addSubview: &view];
+            let parent_ptr = Retained::as_ptr(&parent);
+            let view_ptr = Retained::as_ptr(&view);
+            let _: () = msg_send![parent_ptr, addSubview: view_ptr];
         }
 
         Ok(Self { view, parent })
@@ -61,7 +71,10 @@ impl NsView {
     /// width, height are in CSS pixels.
     pub fn configure(&self, x: i32, y: i32, width: u32, height: u32) -> Result<(), String> {
         // Get parent height for coordinate flipping
-        let parent_frame: NSRect = unsafe { msg_send![&self.parent, frame] };
+        let parent_frame: NSRect = unsafe {
+            let parent_ptr = Retained::as_ptr(&self.parent);
+            msg_send![parent_ptr, frame]
+        };
         let parent_height = parent_frame.size.height;
 
         // Convert from CSS (top-left origin) to AppKit (bottom-left origin)
@@ -76,7 +89,8 @@ impl NsView {
         );
 
         unsafe {
-            let _: () = msg_send![&self.view, setFrame: frame];
+            let view_ptr = Retained::as_ptr(&self.view);
+            let _: () = msg_send![view_ptr, setFrame: frame];
         }
 
         Ok(())
@@ -85,7 +99,8 @@ impl NsView {
     /// Show the view (setHidden:NO)
     pub fn show(&mut self) -> Result<(), String> {
         unsafe {
-            let _: () = msg_send![&self.view, setHidden: false];
+            let view_ptr = Retained::as_ptr(&self.view);
+            let _: () = msg_send![view_ptr, setHidden: false];
         }
         Ok(())
     }
@@ -93,7 +108,8 @@ impl NsView {
     /// Hide the view (setHidden:YES)
     pub fn hide(&mut self) -> Result<(), String> {
         unsafe {
-            let _: () = msg_send![&self.view, setHidden: true];
+            let view_ptr = Retained::as_ptr(&self.view);
+            let _: () = msg_send![view_ptr, setHidden: true];
         }
         Ok(())
     }
@@ -103,7 +119,8 @@ impl Drop for NsView {
     fn drop(&mut self) {
         // Remove from parent to clean up
         unsafe {
-            let _: () = msg_send![&self.view, removeFromSuperview];
+            let view_ptr = Retained::as_ptr(&self.view);
+            let _: () = msg_send![view_ptr, removeFromSuperview];
         }
     }
 }
