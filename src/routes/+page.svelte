@@ -4,7 +4,7 @@
   import { open } from '@tauri-apps/plugin-dialog';
   import VideoPlayer from '$lib/components/VideoPlayer.svelte';
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
-  import type { Settings } from '$lib/types';
+  import type { Settings, Clip } from '$lib/types';
 
   let videoLoaded = $state(false);
   let videoPath = $state('');
@@ -12,6 +12,19 @@
   let position = $state(0);
   let paused = $state(true);
   let mpvWid: number | undefined = $state(undefined);
+  let clips: Clip[] = $state([]);
+
+  // Toast notification state
+  let toastMessage = $state('');
+  let toastType = $state<'success' | 'error'>('success');
+  let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function showToast(message: string, type: 'success' | 'error' = 'success') {
+    toastMessage = message;
+    toastType = type;
+    if (toastTimeout) clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => { toastMessage = ''; }, 3000);
+  }
 
   let settingsOpen = $state(false);
   let settings: Settings = $state({
@@ -30,6 +43,14 @@
     // TODO: Persist to backend
   }
 
+  async function refreshClips() {
+    try {
+      clips = await api.getClips();
+    } catch (e) {
+      console.error('Failed to load clips:', e);
+    }
+  }
+
   async function openVideo() {
     const selected = await open({
       multiple: false,
@@ -41,9 +62,15 @@
 
     if (selected) {
       videoPath = selected;
-      duration = await api.openVideo(selected, mpvWid);
+      try {
+        duration = await api.openVideo(selected, mpvWid);
+      } catch (e) {
+        showToast('Failed to open video: ' + e, 'error');
+        return;
+      }
       videoLoaded = true;
       paused = true;
+      await refreshClips();
     }
   }
 
@@ -58,20 +85,24 @@
   }
 
   async function saveClip() {
+    if (!videoLoaded) return;
     try {
       const result = await api.saveClip();
       if (result.success) {
-        console.log('Clip saved:', result.path);
+        const filename = result.path.split('/').pop() ?? result.path;
+        showToast('Clip saved: ' + filename, 'success');
+        await refreshClips();
       } else {
-        console.error('Clip failed:', result.error);
+        showToast('Clip failed: ' + (result.error ?? 'unknown error'), 'error');
       }
     } catch (e) {
-      console.error('Clip error:', e);
+      showToast('Clip error: ' + e, 'error');
     }
   }
 
   // Position polling loop
   let pollInterval: ReturnType<typeof setInterval> | null = null;
+  let clipsRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
     // Register global shortcuts
@@ -103,9 +134,18 @@
       }
     }, 200);
 
+    // Refresh clips list every 3 seconds to detect manual deletions
+    clipsRefreshInterval = setInterval(async () => {
+      if (videoLoaded) {
+        await refreshClips();
+      }
+    }, 3000);
+
     return () => {
       window.removeEventListener('keydown', handleKeydown);
       if (pollInterval) clearInterval(pollInterval);
+      if (clipsRefreshInterval) clearInterval(clipsRefreshInterval);
+      if (toastTimeout) clearTimeout(toastTimeout);
       api.shutdown();
     };
   });
@@ -113,7 +153,9 @@
 
 <div class="main-layout">
   <div class="video-section">
-    <VideoPlayer {videoLoaded} onMpvWindowCreated={(wid) => mpvWid = wid} />
+    <div class="video-wrapper">
+      <VideoPlayer {videoLoaded} onMpvWindowCreated={(wid) => mpvWid = wid} />
+    </div>
 
     <div class="controls">
       <button onclick={openVideo}>Open (O)</button>
@@ -134,10 +176,29 @@
   </div>
 
   <div class="clips-section">
-    <h2>Saved Clips</h2>
-    <p class="placeholder">No clips yet</p>
+    <h2>Saved Clips ({clips.length})</h2>
+    {#if clips.length === 0}
+      <p class="placeholder">{videoLoaded ? 'No clips yet — press C to save one' : 'Open a video to see clips'}</p>
+    {:else}
+      <ul class="clip-list">
+        {#each clips as clip}
+          <li class="clip-item">
+            <div class="clip-name">{clip.clip_path.split('/').pop()}</div>
+            <div class="clip-time">
+              {clip.start_time.toFixed(1)}s — {clip.end_time.toFixed(1)}s
+            </div>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </div>
 </div>
+
+{#if toastMessage}
+  <div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
+    {toastMessage}
+  </div>
+{/if}
 
 <SettingsDialog
   bind:open={settingsOpen}
@@ -150,22 +211,34 @@
   .main-layout {
     display: grid;
     grid-template-columns: 2fr 1fr;
+    grid-template-rows: 1fr;
     height: 100vh;
     gap: 1rem;
     padding: 1rem;
     background: #1a1a2e;
     color: #e0e0e0;
+    overflow: hidden;
+    box-sizing: border-box;
   }
 
   .video-section {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: 0.5rem;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .video-wrapper {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .controls {
     display: flex;
     gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   button {
@@ -190,22 +263,81 @@
   .status {
     color: #888;
     font-size: 0.9rem;
+    flex-shrink: 0;
   }
 
   .clips-section {
+    display: flex;
+    flex-direction: column;
     background: #16213e;
     padding: 1rem;
     border-radius: 4px;
-    overflow-y: auto;
+    overflow: hidden;
+    min-height: 0;
   }
 
-  h2 {
+  .clips-section h2 {
+    flex-shrink: 0;
     margin-bottom: 1rem;
     color: #e94560;
   }
 
-  .placeholder {
+  .clips-section .placeholder {
+    flex-shrink: 0;
+  }
+
+  .clip-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+  }
+
+  .clip-item {
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    background: #1a1a2e;
+    border-radius: 4px;
+    border-left: 3px solid #e94560;
+  }
+
+  .clip-name {
+    font-size: 0.85rem;
+    word-break: break-all;
+  }
+
+  .clip-time {
+    font-size: 0.8rem;
     color: #888;
-    font-style: italic;
+    margin-top: 0.25rem;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 2rem;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    z-index: 1000;
+    animation: fadeIn 0.2s ease-out;
+  }
+
+  .toast-success {
+    background: #2d6a4f;
+    color: #d8f3dc;
+  }
+
+  .toast-error {
+    background: #9b2226;
+    color: #fec89a;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
 </style>

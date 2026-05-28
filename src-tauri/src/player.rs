@@ -45,6 +45,12 @@ impl Player {
     /// WAYLAND_DISPLAY is temporarily removed from the child environment when
     /// embedding, so mpv uses X11 rendering through the provided window id.
     pub async fn spawn(&mut self, wid: Option<u64>) -> AppResult<()> {
+        // Kill any existing mpv process first
+        if let Some(mut old) = self.process.take() {
+            let _ = old.kill().await;
+        }
+        *self.socket.lock().await = None;
+
         // Clean up stale socket from a previous run
         let _ = std::fs::remove_file(IPC_SOCKET);
 

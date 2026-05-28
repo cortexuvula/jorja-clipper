@@ -144,11 +144,26 @@ impl Controller {
 
     /// Return all saved clips for the currently loaded video.
     ///
-    /// Returns an empty vec if no video is loaded.
+    /// Returns an empty vec if no video is loaded. Automatically removes
+    /// clips whose files have been deleted from disk.
     pub fn get_clips(&self) -> AppResult<Vec<Clip>> {
         if let Some(video_path) = &self.current_video {
-            self.store
-                .get_clips_for_video(video_path.to_str().unwrap_or(""))
+            let clips = self
+                .store
+                .get_clips_for_video(video_path.to_str().unwrap_or(""))?;
+
+            // Filter out clips whose files no longer exist on disk
+            let mut valid_clips = Vec::new();
+            for clip in clips {
+                if std::path::Path::new(&clip.clip_path).exists() {
+                    valid_clips.push(clip);
+                } else {
+                    // Remove stale entry from database
+                    let _ = self.store.delete_clip(clip.id);
+                }
+            }
+
+            Ok(valid_clips)
         } else {
             Ok(Vec::new())
         }

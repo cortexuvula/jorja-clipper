@@ -1,10 +1,23 @@
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use crate::error::{AppError, AppResult};
+
+/// Parse a datetime string that may be RFC 3339 (with timezone) or naive (without timezone).
+/// Naive datetimes are treated as UTC.
+fn parse_datetime(s: &str) -> Result<DateTime<Utc>, String> {
+    // Try RFC 3339 first (e.g. "2026-05-24T07:46:33.067665Z" or "+00:00")
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Ok(dt.with_timezone(&Utc));
+    }
+    // Fall back to naive datetime (e.g. "2026-05-24T07:46:33.067665") — assume UTC
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S%.f")
+        .map(|ndt| ndt.and_utc())
+        .map_err(|e| format!("Failed to parse datetime '{}': {}", s, e))
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Clip {
@@ -101,15 +114,16 @@ impl ClipStore {
         )?;
 
         let clips = stmt.query_map(params![video_path], |row| {
+            let created_str: String = row.get(5)?;
+            let created_at = parse_datetime(&created_str)
+                .map_err(|e| rusqlite::Error::FromSqlConversionFailure(5, rusqlite::types::Type::Text, Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e))))?;
             Ok(Clip {
                 id: row.get(0)?,
                 video_path: row.get(1)?,
                 clip_path: row.get(2)?,
                 start_time: row.get(3)?,
                 end_time: row.get(4)?,
-                created_at: DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
-                    .unwrap()
-                    .with_timezone(&Utc),
+                created_at,
             })
         })?;
 

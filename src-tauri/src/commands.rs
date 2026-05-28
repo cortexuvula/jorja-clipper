@@ -98,9 +98,7 @@ pub async fn open_video(
     wid: Option<u64>,
 ) -> Result<f64, String> {
     let mut ctrl = state.lock().await;
-    ctrl.open_video(PathBuf::from(path), wid)
-        .await
-        .map_err(|e| e.to_string())
+    ctrl.open_video(PathBuf::from(&path), wid).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

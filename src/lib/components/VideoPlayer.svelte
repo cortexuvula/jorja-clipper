@@ -12,12 +12,11 @@
 
   async function sendPosition() {
     if (!rect || !videoLoaded) return;
-    await api.positionMpvWindow(
-      Math.round(rect.x),
-      Math.round(rect.y),
-      Math.round(rect.width),
-      Math.round(rect.height)
-    );
+    const x = Math.round(rect.x);
+    const y = Math.round(rect.y);
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    await api.positionMpvWindow(x, y, w, h);
   }
 
   // Reactively update mpv window when rect or videoLoaded changes
@@ -70,13 +69,16 @@
 <style>
   .video-container {
     width: 100%;
-    aspect-ratio: 16/9;
+    height: 100%;
+    max-height: 100%;
     background: #000;
     border-radius: 8px;
     overflow: hidden;
     display: flex;
     align-items: center;
     justify-content: center;
+    flex: 1;
+    min-height: 0;
   }
 
   .video-container.loaded {
