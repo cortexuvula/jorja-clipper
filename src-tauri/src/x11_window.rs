@@ -1,21 +1,16 @@
 #[cfg(target_os = "linux")]
 use x11rb::{
     connection::Connection,
-    protocol::xproto::{
-        ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt, CreateWindowAux, Screen,
-        WindowClass,
-    },
+    protocol::xproto::{ConfigureWindowAux, ConnectionExt, CreateWindowAux, WindowClass},
     rust_connection::RustConnection,
-    wrapper::ConnectionExt as _,
-    CURRENT_TIME,
 };
 
 #[cfg(target_os = "linux")]
 pub struct X11Window {
     conn: RustConnection,
-    screen_num: usize,
+    _screen_num: usize,
     window_id: u32,
-    parent_id: u32,
+    _parent_id: u32,
     mapped: bool,
 }
 
@@ -58,9 +53,9 @@ impl X11Window {
 
         Ok(Self {
             conn,
-            screen_num,
+            _screen_num: screen_num,
             window_id,
-            parent_id: parent_window_id,
+            _parent_id: parent_window_id,
             mapped: false,
         })
     }

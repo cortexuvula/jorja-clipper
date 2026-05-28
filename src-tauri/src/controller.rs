@@ -18,6 +18,7 @@ use crate::storage::{Clip, ClipStore};
 pub struct Controller {
     pub player: Player,
     pub clipper: Clipper,
+    #[allow(dead_code)]
     pub settings: Settings,
     pub store: ClipStore,
     pub current_video: Option<PathBuf>,

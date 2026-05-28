@@ -73,7 +73,7 @@ impl Clipper {
 
         // Run FFmpeg with stream copy (lossless)
         let output = Command::new("ffmpeg")
-            .args(&[
+            .args([
                 "-y", // Overwrite output
                 "-ss",
                 &format!("{:.3}", start_time),

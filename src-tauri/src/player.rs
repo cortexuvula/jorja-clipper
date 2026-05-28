@@ -71,7 +71,7 @@ impl Player {
         let _ = std::fs::remove_file(IPC_SOCKET);
 
         let mut cmd = Command::new("mpv");
-        cmd.args(&[
+        cmd.args([
             "--idle",
             "--force-window",
             #[cfg(unix)]
