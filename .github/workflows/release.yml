@@ -39,6 +39,9 @@ jobs:
 
       - name: Build app bundle
         run: npx tauri build
+        env:
+          # FUSE is unavailable in GitHub runners; extract AppImages instead
+          APPIMAGE_EXTRACT_AND_RUN: 1
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
