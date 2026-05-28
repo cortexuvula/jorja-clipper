@@ -110,7 +110,16 @@ impl Converter {
             ])
             .output()
             .await
-            .map_err(|e| AppError::Clip(format!("Failed to run ffprobe: {}", e)))?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                        • macOS: brew install ffmpeg\n\
+                        • Windows: Download from https://ffmpeg.org/download.html\n\
+                        • Linux: sudo apt install ffmpeg".to_string())
+                } else {
+                    AppError::Clip(format!("Failed to run ffprobe: {}", e))
+                }
+            })?;
 
         if !output.status.success() {
             return Err(AppError::Clip("ffprobe failed".to_string()));
@@ -153,7 +162,16 @@ impl Converter {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| AppError::Clip(format!("Failed to spawn ffmpeg: {}", e)))?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                        • macOS: brew install ffmpeg\n\
+                        • Windows: Download from https://ffmpeg.org/download.html\n\
+                        • Linux: sudo apt install ffmpeg".to_string())
+                } else {
+                    AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
+                }
+            })?;
 
         // Parse progress from stderr
         Self::parse_progress(&mut child, duration, progress_tx).await?;
@@ -206,7 +224,16 @@ impl Converter {
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
-            .map_err(|e| AppError::Clip(format!("Failed to spawn ffmpeg: {}", e)))?;
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                        • macOS: brew install ffmpeg\n\
+                        • Windows: Download from https://ffmpeg.org/download.html\n\
+                        • Linux: sudo apt install ffmpeg".to_string())
+                } else {
+                    AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
+                }
+            })?;
 
         // Parse progress from stderr
         Self::parse_progress(&mut child, duration, progress_tx).await?;
