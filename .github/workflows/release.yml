@@ -37,6 +37,9 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
+
       - name: Build app bundle
         # AppImage bundling requires FUSE which is unavailable in GitHub
         # runners; build deb and rpm only (most common Linux package formats)
@@ -75,6 +78,9 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
+
       - name: Build app bundle
         run: npx tauri build --target universal-apple-darwin
 
@@ -106,6 +112,9 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
 
       - name: Build app bundle
         run: npx tauri build
