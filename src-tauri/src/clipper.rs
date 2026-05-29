@@ -4,6 +4,17 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
+/// Generate a helpful "FFmpeg not found" error message
+fn ffmpeg_not_found_error() -> AppError {
+    AppError::Ffmpeg(
+        "FFmpeg not found. Please install FFmpeg:\n\
+        • macOS: brew install ffmpeg\n\
+        • Windows: Download from https://ffmpeg.org/download.html\n\
+        • Linux: sudo apt install ffmpeg"
+            .to_string(),
+    )
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipResult {
     pub success: bool,
@@ -87,13 +98,7 @@ impl Clipper {
             .await
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Ffmpeg(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error()
                 } else {
                     AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
                 }

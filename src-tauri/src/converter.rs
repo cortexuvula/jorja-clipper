@@ -10,6 +10,17 @@ use crate::error::{AppError, AppResult};
 /// Web-compatible video formats (can be played directly in HTML5 video)
 const WEB_FORMATS: &[&str] = &["mp4", "webm", "ogg", "ogv", "m4v"];
 
+/// Generate a helpful "FFmpeg not found" error message
+fn ffmpeg_not_found_error(operation: &str) -> AppError {
+    AppError::Clip(format!(
+        "FFmpeg not found while {}. Please install FFmpeg:\n\
+        • macOS: brew install ffmpeg\n\
+        • Windows: Download from https://ffmpeg.org/download.html\n\
+        • Linux: sudo apt install ffmpeg",
+        operation
+    ))
+}
+
 /// Conversion progress update
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -113,13 +124,7 @@ impl Converter {
             .await
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error("getting video duration")
                 } else {
                     AppError::Clip(format!("Failed to run ffprobe: {}", e))
                 }
@@ -168,13 +173,7 @@ impl Converter {
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error("converting video (stream copy)")
                 } else {
                     AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
                 }
@@ -233,13 +232,7 @@ impl Converter {
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error("converting video (transcode)")
                 } else {
                     AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
                 }
