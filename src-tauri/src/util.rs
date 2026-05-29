@@ -69,11 +69,12 @@ pub fn init_sidecar_paths(app: &tauri::AppHandle) {
 
     // Resolve ffmpeg sidecar path
     if let Ok(resource_dir) = resolver.resource_dir() {
-        let ffmpeg_path = resource_dir.join(ffmpeg_sidecar_name());
+        let binaries_dir = resource_dir.join("binaries");
+        let ffmpeg_path = binaries_dir.join(ffmpeg_sidecar_name());
         let _ = FFMPEG_PATH.set(ffmpeg_path);
 
         // Resolve ffprobe sidecar path
-        let ffprobe_path = resource_dir.join(ffprobe_sidecar_name());
+        let ffprobe_path = binaries_dir.join(ffprobe_sidecar_name());
         let _ = FFPROBE_PATH.set(ffprobe_path);
     }
 }
