@@ -57,20 +57,6 @@ impl Clipper {
         end_time: f64,
         output_path: &Path,
     ) -> AppResult<ClipResult> {
-        // Verify FFmpeg is available
-        let ffmpeg_check = Command::new(crate::util::resolve_binary("ffmpeg"))
-            .arg("-version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .await;
-
-        if ffmpeg_check.is_err() {
-            return Err(AppError::Ffmpeg(
-                "FFmpeg not found. Please install FFmpeg.".to_string(),
-            ));
-        }
-
         // Convert paths to strings, returning a graceful error for non-UTF8 paths
         let video_path_str = video_path
             .to_str()
@@ -98,7 +84,20 @@ impl Clipper {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
-            .await?;
+            .await
+            .map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    AppError::Ffmpeg(
+                        "FFmpeg not found. Please install FFmpeg:\n\
+                        • macOS: brew install ffmpeg\n\
+                        • Windows: Download from https://ffmpeg.org/download.html\n\
+                        • Linux: sudo apt install ffmpeg"
+                            .to_string(),
+                    )
+                } else {
+                    AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
+                }
+            })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
