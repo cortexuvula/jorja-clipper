@@ -86,3 +86,16 @@ pub async fn delete_clip(
     let ctrl = state.lock().await;
     ctrl.delete_clip(id, &clip_path).map_err(|e| e.to_string())
 }
+
+/// Start a local HTTP server to stream video files with range request support.
+/// This is needed for WebKitGTK on Linux which doesn't support range requests
+/// on the asset:// protocol.
+#[tauri::command]
+pub async fn start_video_server(
+    video_server: State<'_, Arc<Mutex<crate::video_server::VideoServer>>>,
+    path: String,
+) -> Result<String, String> {
+    let mut server = video_server.lock().await;
+    let port = server.start(PathBuf::from(&path))?;
+    Ok(format!("http://127.0.0.1:{}/video.mp4", port))
+}

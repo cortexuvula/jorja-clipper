@@ -20,4 +20,7 @@ export const api = {
 
   deleteClip: (id: number, clipPath: string) =>
     invoke<void>('delete_clip', { id, clipPath }),
+
+  startVideoServer: (path: string) =>
+    invoke<string>('start_video_server', { path }),
 };

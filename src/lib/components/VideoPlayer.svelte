@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { listen } from '@tauri-apps/api/event';
-  import { convertFileSrc } from '@tauri-apps/api/core';
+  import { api } from '$lib/api';
 
   let { videoPath = '', onPositionChange } = $props<{
     videoPath?: string;
@@ -12,11 +12,26 @@
   let duration = $state(0);
   let currentTime = $state(0);
   let paused = $state(true);
+  let videoUrl = $state('');
 
   // Conversion progress state
   let isConverting = $state(false);
   let conversionProgress = $state(0);
   let conversionDuration = $state(0);
+
+  // When videoPath changes, start local HTTP server for streaming
+  // This avoids asset:// protocol issues with video streaming on Linux/WebKitGTK
+  $effect(() => {
+    if (videoPath) {
+      api.startVideoServer(videoPath)
+        .then(url => {
+          videoUrl = url;
+        })
+        .catch(e => console.error('Failed to start video server:', e));
+    } else {
+      videoUrl = '';
+    }
+  });
 
   // Update parent when position changes
   $effect(() => {
@@ -99,12 +114,6 @@
     const newTime = Math.max(0, Math.min(duration, currentTime + seconds));
     videoElement.currentTime = newTime;
   }
-
-  // Convert file path to URL for video element
-  function getVideoUrl(path: string): string {
-    // Use Tauri's asset protocol to access local files
-    return convertFileSrc(path);
-  }
 </script>
 
 <div class="video-container">
@@ -126,7 +135,7 @@
   {:else if videoPath}
     <video
       bind:this={videoElement}
-      src={getVideoUrl(videoPath)}
+      src={videoUrl || undefined}
       controls
       onloadedmetadata={onLoadedMetadata}
       ontimeupdate={onTimeUpdate}
