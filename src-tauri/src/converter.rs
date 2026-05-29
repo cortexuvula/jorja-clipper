@@ -98,7 +98,7 @@ impl Converter {
             .to_str()
             .ok_or_else(|| AppError::Clip("Invalid input path".to_string()))?;
 
-        let output = Command::new("ffprobe")
+        let output = Command::new(crate::util::resolve_binary("ffprobe"))
             .args([
                 "-v",
                 "error",
@@ -148,7 +148,7 @@ impl Converter {
             .to_str()
             .ok_or_else(|| AppError::Clip("Invalid output path".to_string()))?;
 
-        let mut child = Command::new("ffmpeg")
+        let mut child = Command::new(crate::util::resolve_binary("ffmpeg"))
             .args([
                 "-i",
                 input_str,
@@ -202,7 +202,7 @@ impl Converter {
             .to_str()
             .ok_or_else(|| AppError::Clip("Invalid output path".to_string()))?;
 
-        let mut child = Command::new("ffmpeg")
+        let mut child = Command::new(crate::util::resolve_binary("ffmpeg"))
             .args([
                 "-i",
                 input_str,
