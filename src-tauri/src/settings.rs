@@ -26,7 +26,7 @@ impl Default for Settings {
 
 impl Settings {
     pub fn load() -> AppResult<Self> {
-        let config_path = Self::config_path()?;
+        let config_path = Self::config_path();
 
         if !config_path.exists() {
             let settings = Self::default();
@@ -42,7 +42,7 @@ impl Settings {
     }
 
     pub fn save(&self) -> AppResult<()> {
-        let config_path = Self::config_path()?;
+        let config_path = Self::config_path();
 
         if let Some(parent) = config_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -56,11 +56,8 @@ impl Settings {
         Ok(())
     }
 
-    fn config_path() -> AppResult<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| AppError::Storage("Could not determine config directory".to_string()))?;
-
-        Ok(config_dir.join("jorja-clipper").join("config.json"))
+    fn config_path() -> PathBuf {
+        crate::util::app_config_dir().join("config.json")
     }
 }
 

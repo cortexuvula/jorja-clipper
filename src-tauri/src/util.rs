@@ -101,6 +101,13 @@ pub fn ffprobe_sidecar_name() -> String {
     sidecar_name("ffprobe")
 }
 
+/// Get the application config directory.
+pub fn app_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("jorja-clipper")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
