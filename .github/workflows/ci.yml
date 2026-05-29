@@ -59,6 +59,9 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
+
       - name: Build frontend
         run: npm run build
 
@@ -94,6 +97,9 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
+
       - name: Build frontend
         run: npm run build
 
@@ -122,6 +128,9 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+
+      - name: Download FFmpeg sidecar binaries
+        run: ./setup-ffmpeg.sh
 
       - name: Build frontend
         run: npm run build
