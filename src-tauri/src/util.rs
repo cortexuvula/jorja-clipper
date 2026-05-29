@@ -79,36 +79,33 @@ pub fn init_sidecar_paths(app: &tauri::AppHandle) {
     }
 }
 
-/// Get the sidecar binary name for ffmpeg.
-fn ffmpeg_sidecar_name() -> &'static str {
+/// Get the sidecar binary name for a given tool (ffmpeg or ffprobe).
+fn sidecar_name(tool: &str) -> String {
     #[cfg(target_os = "macos")]
-    {
-        "ffmpeg-x86_64-apple-darwin"
-    }
+    { format!("{}-x86_64-apple-darwin", tool) }
+
     #[cfg(target_os = "windows")]
-    {
-        "ffmpeg-x86_64-pc-windows-msvc.exe"
-    }
+    { format!("{}-x86_64-pc-windows-msvc.exe", tool) }
+
     #[cfg(target_os = "linux")]
-    {
-        "ffmpeg-x86_64-unknown-linux-gnu"
-    }
+    { format!("{}-x86_64-unknown-linux-gnu", tool) }
 }
 
-/// Get the sidecar binary name for ffprobe.
-fn ffprobe_sidecar_name() -> &'static str {
-    #[cfg(target_os = "macos")]
-    {
-        "ffprobe-x86_64-apple-darwin"
-    }
-    #[cfg(target_os = "windows")]
-    {
-        "ffprobe-x86_64-pc-windows-msvc.exe"
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "ffprobe-x86_64-unknown-linux-gnu"
-    }
+/// Get the FFmpeg sidecar binary name.
+pub fn ffmpeg_sidecar_name() -> String {
+    sidecar_name("ffmpeg")
+}
+
+/// Get the ffprobe sidecar binary name.
+pub fn ffprobe_sidecar_name() -> String {
+    sidecar_name("ffprobe")
+}
+
+/// Get the application config directory.
+pub fn app_config_dir() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("jorja-clipper")
 }
 
 #[cfg(test)]

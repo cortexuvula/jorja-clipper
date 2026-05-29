@@ -35,7 +35,7 @@ pub struct ClipStore {
 
 impl ClipStore {
     pub fn new() -> AppResult<Self> {
-        let db_path = Self::db_path()?;
+        let db_path = Self::db_path();
 
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -155,11 +155,8 @@ impl ClipStore {
         Ok(())
     }
 
-    fn db_path() -> AppResult<PathBuf> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| AppError::Storage("Could not determine config directory".to_string()))?;
-
-        Ok(config_dir.join("jorja-clipper").join("clips.db"))
+    fn db_path() -> PathBuf {
+        crate::util::app_config_dir().join("clips.db")
     }
 }
 

@@ -10,6 +10,17 @@ use crate::error::{AppError, AppResult};
 /// Web-compatible video formats (can be played directly in HTML5 video)
 const WEB_FORMATS: &[&str] = &["mp4", "webm", "ogg", "ogv", "m4v"];
 
+/// Generate a helpful "FFmpeg not found" error message
+fn ffmpeg_not_found_error(operation: &str) -> AppError {
+    AppError::Clip(format!(
+        "FFmpeg not found while {}. Please install FFmpeg:\n\
+        • macOS: brew install ffmpeg\n\
+        • Windows: Download from https://ffmpeg.org/download.html\n\
+        • Linux: sudo apt install ffmpeg",
+        operation
+    ))
+}
+
 /// Conversion progress update
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -113,13 +124,7 @@ impl Converter {
             .await
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error("getting video duration")
                 } else {
                     AppError::Clip(format!("Failed to run ffprobe: {}", e))
                 }
@@ -138,12 +143,14 @@ impl Converter {
         Ok(duration)
     }
 
-    /// Convert using stream copy (fast, no re-encoding)
-    async fn convert_with_stream_copy(
+    /// Run FFmpeg with the given arguments and parse progress
+    async fn run_ffmpeg(
         input_path: &Path,
         output_path: &Path,
+        args: &[&str],
         duration: f64,
         progress_tx: &mpsc::Sender<ConversionStatus>,
+        operation: &str,
     ) -> AppResult<()> {
         let input_str = input_path
             .to_str()
@@ -152,35 +159,23 @@ impl Converter {
             .to_str()
             .ok_or_else(|| AppError::Clip("Invalid output path".to_string()))?;
 
+        let mut cmd_args = vec!["-i", input_str];
+        cmd_args.extend_from_slice(args);
+        cmd_args.extend_from_slice(&["-movflags", "+faststart", "-y", output_str]);
+
         let mut child = Command::new(crate::util::resolve_binary("ffmpeg"))
-            .args([
-                "-i",
-                input_str,
-                "-c",
-                "copy", // Stream copy (no re-encoding)
-                "-movflags",
-                "+faststart", // Optimize for web streaming
-                "-y",         // Overwrite output
-                output_str,
-            ])
+            .args(&cmd_args)
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
+                    ffmpeg_not_found_error(operation)
                 } else {
                     AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
                 }
             })?;
 
-        // Parse progress from stderr
         Self::parse_progress(&mut child, duration, progress_tx).await?;
 
         let status = child
@@ -189,10 +184,28 @@ impl Converter {
             .map_err(|e| AppError::Clip(format!("Failed to wait for ffmpeg: {}", e)))?;
 
         if !status.success() {
-            return Err(AppError::Clip("ffmpeg stream copy failed".to_string()));
+            return Err(AppError::Clip(format!("ffmpeg {} failed", operation)));
         }
 
         Ok(())
+    }
+
+    /// Convert using stream copy (fast, no re-encoding)
+    async fn convert_with_stream_copy(
+        input_path: &Path,
+        output_path: &Path,
+        duration: f64,
+        progress_tx: &mpsc::Sender<ConversionStatus>,
+    ) -> AppResult<()> {
+        Self::run_ffmpeg(
+            input_path,
+            output_path,
+            &["-c", "copy"],
+            duration,
+            progress_tx,
+            "stream copy",
+        )
+        .await
     }
 
     /// Convert using transcode (slower but more compatible)
@@ -202,62 +215,21 @@ impl Converter {
         duration: f64,
         progress_tx: &mpsc::Sender<ConversionStatus>,
     ) -> AppResult<()> {
-        let input_str = input_path
-            .to_str()
-            .ok_or_else(|| AppError::Clip("Invalid input path".to_string()))?;
-        let output_str = output_path
-            .to_str()
-            .ok_or_else(|| AppError::Clip("Invalid output path".to_string()))?;
-
-        let mut child = Command::new(crate::util::resolve_binary("ffmpeg"))
-            .args([
-                "-i",
-                input_str,
-                "-c:v",
-                "libx264", // Transcode video to H.264
-                "-preset",
-                "fast", // Balance speed and quality
-                "-crf",
-                "23", // Quality setting (lower = better, 23 is default)
-                "-c:a",
-                "aac", // Transcode audio to AAC
-                "-b:a",
-                "128k", // Audio bitrate
-                "-movflags",
-                "+faststart", // Optimize for web streaming
-                "-y",
-                output_str,
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip(
-                        "FFmpeg not found. Please install FFmpeg:\n\
-                        • macOS: brew install ffmpeg\n\
-                        • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg"
-                            .to_string(),
-                    )
-                } else {
-                    AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
-                }
-            })?;
-
-        // Parse progress from stderr
-        Self::parse_progress(&mut child, duration, progress_tx).await?;
-
-        let status = child
-            .wait()
-            .await
-            .map_err(|e| AppError::Clip(format!("Failed to wait for ffmpeg: {}", e)))?;
-
-        if !status.success() {
-            return Err(AppError::Clip("ffmpeg transcode failed".to_string()));
-        }
-
-        Ok(())
+        Self::run_ffmpeg(
+            input_path,
+            output_path,
+            &[
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-c:a", "aac",
+                "-b:a", "128k",
+            ],
+            duration,
+            progress_tx,
+            "transcode",
+        )
+        .await
     }
 
     /// Parse FFmpeg progress output and emit updates

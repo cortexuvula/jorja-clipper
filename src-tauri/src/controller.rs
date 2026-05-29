@@ -45,10 +45,7 @@ impl Controller {
         let clipper = Clipper::new(settings.buffer_before, settings.buffer_after);
 
         // Use clips directory for converted files
-        let clips_dir = dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("jorja-clipper")
-            .join("clips");
+        let clips_dir = crate::util::app_config_dir().join("clips");
 
         // Create clips directory if it doesn't exist
         if !clips_dir.exists() {
