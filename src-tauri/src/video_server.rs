@@ -65,7 +65,7 @@ fn handle_request(
     reader.read_line(&mut request_line)?;
 
     // Parse the request line
-    let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
+    let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
         return Ok(());
     }
@@ -103,7 +103,7 @@ fn handle_request(
     let (start, end, status_code) = if let Some(range) = headers.get("range") {
         if let Some(range_value) = range.strip_prefix("bytes=") {
             let parts: Vec<&str> = range_value.split('-').collect();
-            let start: u64 = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(0);
+            let start: u64 = parts.first().and_then(|s| s.parse().ok()).unwrap_or(0);
             let end: u64 = parts
                 .get(1)
                 .and_then(|s| s.parse().ok())

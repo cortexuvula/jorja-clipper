@@ -12,6 +12,7 @@ const WEB_FORMATS: &[&str] = &["mp4", "webm", "ogg", "ogv", "m4v"];
 
 /// Conversion progress update
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum ConversionStatus {
     /// Conversion started, total duration in seconds
     Started { duration: f64 },

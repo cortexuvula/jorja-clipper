@@ -52,7 +52,7 @@ impl Controller {
 
         // Create clips directory if it doesn't exist
         if !clips_dir.exists() {
-            std::fs::create_dir_all(&clips_dir).map_err(|e| AppError::Io(e))?;
+            std::fs::create_dir_all(&clips_dir).map_err(AppError::Io)?;
         }
 
         Ok(Self {
