@@ -36,8 +36,10 @@ pub async fn open_video(
                     let _ = app_clone.emit("conversion-progress", percent);
                 }
                 ConversionStatus::Completed { output_path } => {
-                    let _ = app_clone
-                        .emit("conversion-completed", output_path.to_string_lossy().to_string());
+                    let _ = app_clone.emit(
+                        "conversion-completed",
+                        output_path.to_string_lossy().to_string(),
+                    );
                 }
                 ConversionStatus::Failed(error) => {
                     let _ = app_clone.emit("conversion-failed", error);
@@ -69,9 +71,7 @@ pub async fn save_clip(
 
 /// Return all saved clips for the currently loaded video.
 #[tauri::command]
-pub async fn get_clips(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<Vec<Clip>, String> {
+pub async fn get_clips(state: State<'_, Arc<Mutex<Controller>>>) -> Result<Vec<Clip>, String> {
     let ctrl = state.lock().await;
     ctrl.get_clips().map_err(|e| e.to_string())
 }

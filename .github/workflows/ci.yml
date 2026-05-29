@@ -130,6 +130,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Download FFmpeg sidecar binaries
+        shell: bash
         run: ./setup-ffmpeg.sh
 
       - name: Build frontend

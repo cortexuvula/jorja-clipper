@@ -52,8 +52,7 @@ impl Controller {
 
         // Create clips directory if it doesn't exist
         if !clips_dir.exists() {
-            std::fs::create_dir_all(&clips_dir)
-                .map_err(|e| AppError::Io(e))?;
+            std::fs::create_dir_all(&clips_dir).map_err(|e| AppError::Io(e))?;
         }
 
         Ok(Self {
@@ -119,11 +118,7 @@ impl Controller {
     /// Uses the configured pre/post buffers to calculate the clip window.
     /// Rejects the request if a clip is already being saved or no video is loaded.
     /// The `is_clipping` flag is always reset, even when the operation fails.
-    pub async fn save_clip(
-        &mut self,
-        current_pos: f64,
-        duration: f64,
-    ) -> AppResult<ClipResult> {
+    pub async fn save_clip(&mut self, current_pos: f64, duration: f64) -> AppResult<ClipResult> {
         if self.is_clipping {
             return Err(AppError::ClipInProgress);
         }

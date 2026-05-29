@@ -22,7 +22,8 @@ impl VideoServer {
         // Find an available port
         let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|e| format!("Failed to bind to port: {}", e))?;
-        let port = listener.local_addr()
+        let port = listener
+            .local_addr()
             .map_err(|e| format!("Failed to get local address: {}", e))?
             .port();
 
@@ -103,7 +104,8 @@ fn handle_request(
         if let Some(range_value) = range.strip_prefix("bytes=") {
             let parts: Vec<&str> = range_value.split('-').collect();
             let start: u64 = parts.get(0).and_then(|s| s.parse().ok()).unwrap_or(0);
-            let end: u64 = parts.get(1)
+            let end: u64 = parts
+                .get(1)
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(file_size - 1)
                 .min(file_size - 1);
@@ -126,7 +128,11 @@ fn handle_request(
          Access-Control-Allow-Origin: *\r\n\
          Connection: close\r\n",
         status_code,
-        if status_code == 206 { "Partial Content" } else { "OK" },
+        if status_code == 206 {
+            "Partial Content"
+        } else {
+            "OK"
+        },
         mime_type,
         content_length
     );

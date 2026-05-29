@@ -112,10 +112,13 @@ impl Converter {
             .await
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                    AppError::Clip(
+                        "FFmpeg not found. Please install FFmpeg:\n\
                         • macOS: brew install ffmpeg\n\
                         • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg".to_string())
+                        • Linux: sudo apt install ffmpeg"
+                            .to_string(),
+                    )
                 } else {
                     AppError::Clip(format!("Failed to run ffprobe: {}", e))
                 }
@@ -156,7 +159,7 @@ impl Converter {
                 "copy", // Stream copy (no re-encoding)
                 "-movflags",
                 "+faststart", // Optimize for web streaming
-                "-y",        // Overwrite output
+                "-y",         // Overwrite output
                 output_str,
             ])
             .stdout(Stdio::null())
@@ -164,10 +167,13 @@ impl Converter {
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                    AppError::Clip(
+                        "FFmpeg not found. Please install FFmpeg:\n\
                         • macOS: brew install ffmpeg\n\
                         • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg".to_string())
+                        • Linux: sudo apt install ffmpeg"
+                            .to_string(),
+                    )
                 } else {
                     AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
                 }
@@ -226,10 +232,13 @@ impl Converter {
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    AppError::Clip("FFmpeg not found. Please install FFmpeg:\n\
+                    AppError::Clip(
+                        "FFmpeg not found. Please install FFmpeg:\n\
                         • macOS: brew install ffmpeg\n\
                         • Windows: Download from https://ffmpeg.org/download.html\n\
-                        • Linux: sudo apt install ffmpeg".to_string())
+                        • Linux: sudo apt install ffmpeg"
+                            .to_string(),
+                    )
                 } else {
                     AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
                 }
