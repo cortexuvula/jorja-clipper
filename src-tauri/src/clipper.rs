@@ -71,6 +71,14 @@ impl Clipper {
             ));
         }
 
+        // Convert paths to strings, returning a graceful error for non-UTF8 paths
+        let video_path_str = video_path
+            .to_str()
+            .ok_or_else(|| AppError::Ffmpeg("Video path contains non-UTF8 characters".to_string()))?;
+        let output_path_str = output_path
+            .to_str()
+            .ok_or_else(|| AppError::Ffmpeg("Output path contains non-UTF8 characters".to_string()))?;
+
         // Run FFmpeg with stream copy (lossless)
         let output = Command::new(crate::util::resolve_binary("ffmpeg"))
             .args([
@@ -80,12 +88,12 @@ impl Clipper {
                 "-to",
                 &format!("{:.3}", end_time),
                 "-i",
-                video_path.to_str().unwrap(),
+                video_path_str,
                 "-c",
                 "copy", // Stream copy (no re-encoding)
                 "-avoid_negative_ts",
                 "1",
-                output_path.to_str().unwrap(),
+                output_path_str,
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
