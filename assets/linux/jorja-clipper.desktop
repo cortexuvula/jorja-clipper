@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Jorja Clipper
+Comment=Instant sports highlight clipping — press a hotkey to save lossless video clips
+Exec=jorja-clipper %f
+Icon=jorja-clipper
+Terminal=false
+Type=Application
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=video;clip;highlight;basketball;sports;ffmpeg;
+MimeType=video/mp4;video/x-matroska;video/webm;video/x-msvideo;video/quicktime;

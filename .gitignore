@@ -22,6 +22,10 @@ src-tauri/binaries/
 
 # macOS
 .DS_Store
+*.dmg
+
+# Build intermediates
+assets/icons/*.iconset/
 
 # Logs
 *.log
