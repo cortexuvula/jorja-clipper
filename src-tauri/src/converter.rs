@@ -110,8 +110,8 @@ impl Converter {
             .to_str()
             .ok_or_else(|| AppError::Clip("Invalid input path".to_string()))?;
 
-        let output = Command::new(crate::util::resolve_binary("ffprobe"))
-            .args([
+        let mut cmd = Command::new(crate::util::resolve_binary("ffprobe"));
+        cmd.args([
                 "-v",
                 "error",
                 "-show_entries",
@@ -119,7 +119,13 @@ impl Converter {
                 "-of",
                 "default=noprint_wrappers=1:nokey=1",
                 input_str,
-            ])
+            ]);
+
+        // Prevent console window from appearing on Windows
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let output = cmd
             .output()
             .await
             .map_err(|e| {
@@ -163,10 +169,16 @@ impl Converter {
         cmd_args.extend_from_slice(args);
         cmd_args.extend_from_slice(&["-movflags", "+faststart", "-y", output_str]);
 
-        let mut child = Command::new(crate::util::resolve_binary("ffmpeg"))
-            .args(&cmd_args)
+        let mut cmd = Command::new(crate::util::resolve_binary("ffmpeg"));
+        cmd.args(&cmd_args)
             .stdout(Stdio::null())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        // Prevent console window from appearing on Windows
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let mut child = cmd
             .spawn()
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {

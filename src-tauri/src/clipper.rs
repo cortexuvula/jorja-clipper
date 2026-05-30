@@ -77,8 +77,8 @@ impl Clipper {
             .ok_or_else(|| AppError::Ffmpeg("Output path contains non-UTF8 characters".to_string()))?;
 
         // Run FFmpeg with stream copy (lossless)
-        let output = Command::new(crate::util::resolve_binary("ffmpeg"))
-            .args([
+        let mut cmd = Command::new(crate::util::resolve_binary("ffmpeg"));
+        cmd.args([
                 "-y", // Overwrite output
                 "-ss",
                 &format!("{:.3}", start_time),
@@ -93,7 +93,13 @@ impl Clipper {
                 output_path_str,
             ])
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::piped());
+
+        // Prevent console window from appearing on Windows
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let output = cmd
             .output()
             .await
             .map_err(|e| {

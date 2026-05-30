@@ -36,3 +36,4 @@ clips/
 # Environment
 .env
 .env.local
+.claude/

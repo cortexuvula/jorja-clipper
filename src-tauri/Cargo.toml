@@ -1,6 +1,6 @@
 [package]
 name = "jorja-clipper"
-version = "0.5.4"
+version = "0.5.5"
 description = "Cross-platform desktop app for instant sports highlight extraction"
 authors = ["you"]
 edition = "2021"
