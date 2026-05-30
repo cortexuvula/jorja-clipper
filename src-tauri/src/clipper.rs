@@ -4,6 +4,9 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
 /// Generate a helpful "FFmpeg not found" error message
 fn ffmpeg_not_found_error() -> AppError {
     AppError::Ffmpeg(
