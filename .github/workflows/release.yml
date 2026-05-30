@@ -38,7 +38,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Download FFmpeg sidecar binaries
-        run: ./setup-ffmpeg.sh --all
+        run: ./setup-ffmpeg.sh
 
       - name: Build app bundle
         # AppImage bundling requires FUSE which is unavailable in GitHub
@@ -79,7 +79,7 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Download FFmpeg sidecar binaries
-        run: ./setup-ffmpeg.sh --all
+        run: ./setup-ffmpeg.sh
 
       - name: Build app bundle
         run: npx tauri build --target universal-apple-darwin
@@ -115,7 +115,7 @@ jobs:
 
       - name: Download FFmpeg sidecar binaries
         shell: bash
-        run: ./setup-ffmpeg.sh --all
+        run: ./setup-ffmpeg.sh
 
       - name: Build app bundle
         run: npx tauri build
