@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { Clip, ClipResult } from './types';
+import type { Clip, ClipResult, Settings } from './types';
 
 export interface OpenVideoResponse {
   play_path: string;
@@ -23,4 +23,10 @@ export const api = {
 
   startVideoServer: (path: string) =>
     invoke<string>('start_video_server', { path }),
+
+  getSettings: () =>
+    invoke<Settings>('get_settings'),
+
+  saveSettings: (settings: Settings) =>
+    invoke<void>('save_settings', { settings }),
 };

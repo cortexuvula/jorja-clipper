@@ -15,10 +15,12 @@ export interface Clip {
   created_at: string;
 }
 
+export type Theme = 'dark' | 'light';
+
 export interface Settings {
   buffer_before: number;
   buffer_after: number;
   clip_key: string;
   output_dir?: string;
-  theme: string;
+  theme: Theme;
 }

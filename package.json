@@ -1,7 +1,7 @@
 {
   "name": "jorja-clipper",
   "private": true,
-  "version": "0.5.6",
+  "version": "0.5.8",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
@@ -13,6 +13,7 @@
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-shell": "^2.0.0"
   },
   "devDependencies": {

@@ -3,13 +3,26 @@ use std::path::PathBuf;
 
 use crate::error::{AppError, AppResult};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    Dark,
+    Light,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme::Dark
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub buffer_before: f64,
     pub buffer_after: f64,
     pub clip_key: String,
     pub output_dir: Option<PathBuf>,
-    pub theme: String,
+    pub theme: Theme,
 }
 
 impl Default for Settings {
@@ -19,7 +32,7 @@ impl Default for Settings {
             buffer_after: 5.0,
             clip_key: "c".to_string(),
             output_dir: None,
-            theme: "dark".to_string(),
+            theme: Theme::Dark,
         }
     }
 }
@@ -72,7 +85,7 @@ mod tests {
         assert_eq!(settings.buffer_before, 5.0);
         assert_eq!(settings.buffer_after, 5.0);
         assert_eq!(settings.clip_key, "c");
-        assert_eq!(settings.theme, "dark");
+        assert_eq!(settings.theme, Theme::Dark);
     }
 
     #[test]
@@ -88,7 +101,7 @@ mod tests {
             buffer_after: 3.0,
             clip_key: "x".to_string(),
             output_dir: None,
-            theme: "light".to_string(),
+            theme: Theme::Light,
         };
 
         let content = serde_json::to_string_pretty(&settings).unwrap();

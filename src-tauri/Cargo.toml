@@ -19,16 +19,7 @@ thiserror = "1"
 dirs = "5"
 chrono = { version = "0.4", features = ["serde"] }
 tauri-plugin-dialog = "2.7.1"
-raw-window-handle = "0.6"
-tiny_http = "0.12"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-x11rb = { version = "0.13", features = ["allow-unsafe-code"] }
-
-[target.'cfg(target_os = "macos")'.dependencies]
-objc2 = "0.5"
-objc2-app-kit = { version = "0.2", features = ["NSView", "NSWindow", "NSColor", "NSResponder"] }
-objc2-foundation = { version = "0.2", features = ["NSGeometry", "NSString"] }
+tauri-plugin-fs = "2.5.1"
 
 [features]
 default = ["custom-protocol"]

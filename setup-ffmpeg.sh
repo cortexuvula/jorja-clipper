@@ -63,6 +63,8 @@ download_macos() {
     # Download release binaries
     echo "Downloading from evermeet.cx..."
     TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
     cd "$TEMP_DIR"
 
     curl -L "https://evermeet.cx/ffmpeg/get/zip" -o ffmpeg.zip
@@ -77,6 +79,7 @@ download_macos() {
 
     cd "$SCRIPT_DIR"
     rm -rf "$TEMP_DIR"
+    trap - EXIT
     echo "✓ macOS binaries installed"
 }
 
@@ -131,6 +134,8 @@ download_linux() {
     # Download release binaries
     echo "Downloading from johnvansickle.com..."
     TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
     cd "$TEMP_DIR"
 
     curl -L "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz" -o ffmpeg.tar.xz
@@ -143,6 +148,7 @@ download_linux() {
 
     cd "$SCRIPT_DIR"
     rm -rf "$TEMP_DIR"
+    trap - EXIT
     echo "✓ Linux binaries installed"
 }
 
@@ -163,6 +169,8 @@ download_windows() {
     # Download release binaries
     echo "Downloading from gyan.dev..."
     TEMP_DIR=$(mktemp -d)
+    trap "rm -rf $TEMP_DIR" EXIT
+
     cd "$TEMP_DIR"
 
     curl -L "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip" -o ffmpeg.zip
@@ -174,6 +182,7 @@ download_windows() {
 
     cd "$SCRIPT_DIR"
     rm -rf "$TEMP_DIR"
+    trap - EXIT
     echo "✓ Windows binaries installed"
 }
 

@@ -5,25 +5,13 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, ffmpeg_not_found_error};
 
 /// Web-compatible video formats (can be played directly in HTML5 video)
 const WEB_FORMATS: &[&str] = &["mp4", "webm", "ogg", "ogv", "m4v"];
 
-/// Generate a helpful "FFmpeg not found" error message
-fn ffmpeg_not_found_error(operation: &str) -> AppError {
-    AppError::Clip(format!(
-        "FFmpeg not found while {}. Please install FFmpeg:\n\
-        • macOS: brew install ffmpeg\n\
-        • Windows: Download from https://ffmpeg.org/download.html\n\
-        • Linux: sudo apt install ffmpeg",
-        operation
-    ))
-}
-
 /// Conversion progress update
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum ConversionStatus {
     /// Conversion started, total duration in seconds
     Started { duration: f64 },
@@ -33,6 +21,8 @@ pub enum ConversionStatus {
     Completed { output_path: PathBuf },
     /// Conversion failed
     Failed(String),
+    /// Stream copy failed, falling back to transcode (slower)
+    FallbackToTranscode,
 }
 
 /// Video converter that transforms non-web formats into MP4
@@ -78,6 +68,7 @@ impl Converter {
             Err(_) => {
                 // Stream copy failed, fall back to transcode
                 eprintln!("Stream copy failed, falling back to transcode");
+                let _ = progress_tx.send(ConversionStatus::FallbackToTranscode).await;
             }
         }
 
@@ -196,6 +187,10 @@ impl Converter {
             .map_err(|e| AppError::Clip(format!("Failed to wait for ffmpeg: {}", e)))?;
 
         if !status.success() {
+            // Clean up partial output file
+            if output_path.exists() {
+                let _ = std::fs::remove_file(output_path);
+            }
             return Err(AppError::Clip(format!("ffmpeg {} failed", operation)));
         }
 

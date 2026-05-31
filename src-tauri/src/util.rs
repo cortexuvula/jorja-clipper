@@ -26,6 +26,7 @@ pub fn resolve_binary(name: &str) -> PathBuf {
     // First, try to get the sidecar path from the app handle
     if let Some(sidecar_path) = get_sidecar_path(name) {
         if sidecar_path.exists() {
+            println!("[binary] {} resolved to sidecar: {}", name, sidecar_path.display());
             return sidecar_path;
         }
     }
@@ -40,12 +41,14 @@ pub fn resolve_binary(name: &str) -> PathBuf {
         for candidate in &candidates {
             let path = PathBuf::from(candidate);
             if path.exists() {
+                println!("[binary] {} resolved to homebrew: {}", name, path.display());
                 return path;
             }
         }
     }
 
     // Final fallback: bare name (works when PATH is available)
+    println!("[binary] {} resolved to system PATH", name);
     PathBuf::from(name)
 }
 
@@ -82,7 +85,13 @@ pub fn init_sidecar_paths(app: &tauri::AppHandle) {
 /// Get the sidecar binary name for a given tool (ffmpeg or ffprobe).
 fn sidecar_name(tool: &str) -> String {
     #[cfg(target_os = "macos")]
-    { format!("{}-x86_64-apple-darwin", tool) }
+    {
+        #[cfg(target_arch = "aarch64")]
+        { format!("{}-aarch64-apple-darwin", tool) }
+
+        #[cfg(target_arch = "x86_64")]
+        { format!("{}-x86_64-apple-darwin", tool) }
+    }
 
     #[cfg(target_os = "windows")]
     { format!("{}-x86_64-pc-windows-msvc.exe", tool) }

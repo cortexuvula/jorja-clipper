@@ -1,19 +1,8 @@
-use crate::error::{AppError, AppResult};
+use crate::error::{AppError, AppResult, ffmpeg_not_found_error};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use tokio::process::Command;
-
-/// Generate a helpful "FFmpeg not found" error message
-fn ffmpeg_not_found_error() -> AppError {
-    AppError::Ffmpeg(
-        "FFmpeg not found. Please install FFmpeg:\n\
-        • macOS: brew install ffmpeg\n\
-        • Windows: Download from https://ffmpeg.org/download.html\n\
-        • Linux: sudo apt install ffmpeg"
-            .to_string(),
-    )
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClipResult {
@@ -24,6 +13,7 @@ pub struct ClipResult {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Clipper {
     pub buffer_before: f64,
     pub buffer_after: f64,
@@ -43,12 +33,15 @@ impl Clipper {
         (start, end)
     }
 
-    pub fn output_path(&self, video_path: &Path, clip_number: i32) -> AppResult<PathBuf> {
-        let video_dir = video_path
-            .parent()
-            .ok_or_else(|| AppError::Ffmpeg("Video has no parent directory".to_string()))?;
+    pub fn output_path(&self, video_path: &Path, clip_number: i32, output_dir: Option<&Path>) -> AppResult<PathBuf> {
+        let clips_dir = match output_dir {
+            Some(dir) => dir.to_path_buf(),
+            None => video_path
+                .parent()
+                .ok_or_else(|| AppError::Ffmpeg("Video has no parent directory".to_string()))?
+                .join("clips"),
+        };
 
-        let clips_dir = video_dir.join("clips");
         std::fs::create_dir_all(&clips_dir)?;
 
         let video_stem = video_path
@@ -56,7 +49,7 @@ impl Clipper {
             .and_then(|s| s.to_str())
             .ok_or_else(|| AppError::Ffmpeg("Video has no filename".to_string()))?;
 
-        let clip_filename = format!("{}_clip_{:04}.mp4", video_stem, clip_number);
+        let clip_filename = format!("{}_clip_{:05}.mp4", video_stem, clip_number);
 
         Ok(clips_dir.join(clip_filename))
     }
@@ -104,7 +97,7 @@ impl Clipper {
             .await
             .map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
-                    ffmpeg_not_found_error()
+                    ffmpeg_not_found_error("saving clip")
                 } else {
                     AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
                 }
@@ -161,10 +154,10 @@ mod tests {
         let _ = std::fs::create_dir_all(&tmp_dir);
         let video_path = tmp_dir.join("game.mp4");
 
-        let output = clipper.output_path(&video_path, 1).unwrap();
+        let output = clipper.output_path(&video_path, 1, None).unwrap();
 
         assert!(output.to_str().unwrap().contains("clips/"));
-        assert!(output.to_str().unwrap().contains("game_clip_0001.mp4"));
+        assert!(output.to_str().unwrap().contains("game_clip_00001.mp4"));
 
         // Clean up
         let _ = std::fs::remove_dir_all(&tmp_dir);

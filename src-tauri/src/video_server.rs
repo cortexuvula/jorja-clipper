@@ -19,6 +19,14 @@ impl VideoServer {
     }
 
     pub fn start(&mut self, video_path: PathBuf) -> Result<u16, String> {
+        // Always update the video path (for both new and existing servers)
+        *self.video_path.lock().map_err(|e| format!("Mutex poisoned: {}", e))? = Some(video_path.clone());
+
+        // If server already running, return existing port
+        if self.port != 0 {
+            return Ok(self.port);
+        }
+
         // Find an available port
         let listener = TcpListener::bind("127.0.0.1:0")
             .map_err(|e| format!("Failed to bind to port: {}", e))?;
@@ -28,7 +36,6 @@ impl VideoServer {
             .port();
 
         self.port = port;
-        *self.video_path.lock().unwrap() = Some(video_path.clone());
 
         let video_path = Arc::clone(&self.video_path);
 
@@ -36,7 +43,13 @@ impl VideoServer {
             for request in listener.incoming() {
                 match request {
                     Ok(mut stream) => {
-                        let video_path = video_path.lock().unwrap().clone();
+                        let video_path = match video_path.lock() {
+                            Ok(guard) => guard.clone(),
+                            Err(e) => {
+                                eprintln!("Mutex poisoned: {}", e);
+                                continue;
+                            }
+                        };
                         if let Some(path) = video_path {
                             if let Err(e) = handle_request(&mut stream, &path) {
                                 eprintln!("Error handling request: {}", e);
@@ -92,12 +105,37 @@ fn handle_request(
         return Ok(());
     }
 
+    // Check if file exists before opening
+    if !video_path.exists() {
+        let body = "Video file not found";
+        let response = format!(
+            "HTTP/1.1 404 Not Found\r\n\
+             Content-Type: text/plain\r\n\
+             Content-Length: {}\r\n\
+             Connection: close\r\n\r\n\
+             {}",
+            body.len(),
+            body
+        );
+        stream.write_all(response.as_bytes())?;
+        return Ok(());
+    }
+
     // Open the file
     let mut file = File::open(video_path)?;
     let file_size = file.metadata()?.len();
 
-    // Determine MIME type
-    let mime_type = "video/mp4";
+    // Determine MIME type from file extension
+    let mime_type = match video_path.extension().and_then(|e| e.to_str()) {
+        Some("mp4") | Some("m4v") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("ogg") | Some("ogv") => "video/ogg",
+        Some("mkv") => "video/x-matroska",
+        Some("avi") => "video/x-msvideo",
+        Some("mov") => "video/quicktime",
+        Some("ts") => "video/mp2t",
+        _ => "application/octet-stream",
+    };
 
     // Check for Range header
     let (start, end, status_code) = if let Some(range) = headers.get("range") {
@@ -173,5 +211,6 @@ fn handle_request(
     }
 
     stream.flush()?;
+    println!("[video-server] {} {} ({}-{}) {} bytes", method, status_code, start, end, content_length);
     Ok(())
 }

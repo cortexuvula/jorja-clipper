@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cleanup;
 mod clipper;
 mod commands;
 mod controller;
@@ -27,9 +28,15 @@ async fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             // Initialize sidecar paths for bundled FFmpeg binaries
             util::init_sidecar_paths(app.handle());
+
+            // Start background cleanup task for converted files
+            let clips_dir = util::app_config_dir().join("clips");
+            tokio::spawn(cleanup::start_cleanup_task(clips_dir, 7));
+
             Ok(())
         })
         .manage(controller)
@@ -40,6 +47,8 @@ async fn main() {
             commands::get_clips,
             commands::delete_clip,
             commands::start_video_server,
+            commands::get_settings,
+            commands::save_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

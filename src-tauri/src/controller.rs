@@ -1,11 +1,71 @@
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
-use crate::clipper::{ClipResult, Clipper};
+use crate::clipper::Clipper;
 use crate::converter::{ConversionStatus, Converter};
 use crate::error::{AppError, AppResult};
 use crate::settings::Settings;
 use crate::storage::{Clip, ClipStore};
+
+impl Controller {
+    /// Update application settings with validation.
+    ///
+    /// Validates buffer values (0-60 seconds), clip_key (single character),
+    /// and output_dir (must exist and be writable if specified).
+    /// Updates the Clipper with new buffer values, saves to disk, and updates
+    /// the Controller's settings.
+    pub fn update_settings(&mut self, new_settings: Settings) -> AppResult<()> {
+        // Validate buffer values
+        if new_settings.buffer_before < 0.0 || new_settings.buffer_before > 60.0 {
+            return Err(AppError::Clip("Buffer before must be 0-60 seconds".into()));
+        }
+        if new_settings.buffer_after < 0.0 || new_settings.buffer_after > 60.0 {
+            return Err(AppError::Clip("Buffer after must be 0-60 seconds".into()));
+        }
+        // Validate clip_key is a single character
+        if new_settings.clip_key.is_empty() || new_settings.clip_key.chars().count() != 1 {
+            return Err(AppError::Clip("Clip key must be a single character".into()));
+        }
+
+        // Validate output_dir if specified
+        if let Some(ref output_dir) = new_settings.output_dir {
+            if !output_dir.exists() {
+                return Err(AppError::Clip(format!(
+                    "Output directory does not exist: {}",
+                    output_dir.display()
+                )));
+            }
+            if !output_dir.is_dir() {
+                return Err(AppError::Clip(format!(
+                    "Output path is not a directory: {}",
+                    output_dir.display()
+                )));
+            }
+            // Check if directory is writable by trying to create a temp file
+            let test_file = output_dir.join(".write_test");
+            match std::fs::File::create(&test_file) {
+                Ok(_) => {
+                    let _ = std::fs::remove_file(&test_file);
+                }
+                Err(e) => {
+                    return Err(AppError::Clip(format!(
+                        "Output directory is not writable: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        // Update clipper with new buffer values
+        self.clipper = Clipper::new(new_settings.buffer_before, new_settings.buffer_after);
+
+        // Save to disk
+        new_settings.save()?;
+        self.settings = new_settings;
+
+        Ok(())
+    }
+}
 
 /// Response from opening a video, includes path to play and metadata
 #[derive(Debug, Clone, serde::Serialize)]
@@ -27,7 +87,6 @@ pub struct OpenVideoResponse {
 /// Clipper, Settings, or ClipStore directly — it always goes through the controller.
 pub struct Controller {
     pub clipper: Clipper,
-    #[allow(dead_code)]
     pub settings: Settings,
     pub store: ClipStore,
     pub current_video: Option<PathBuf>,
@@ -67,11 +126,20 @@ impl Controller {
     ///
     /// Returns information about the video including the path to play and duration.
     /// Emits progress updates via the channel for non-web formats that need conversion.
+    /// Times out after 4 hours to prevent infinite hangs.
     pub async fn open_video(
         &mut self,
         path: PathBuf,
         progress_tx: Option<mpsc::Sender<ConversionStatus>>,
     ) -> AppResult<OpenVideoResponse> {
+        // Check if file exists before doing any work
+        if !path.exists() {
+            return Err(AppError::Clip(format!(
+                "Video file does not exist: {}",
+                path.display()
+            )));
+        }
+
         let source_path = path.clone();
 
         // Check if file is web-compatible
@@ -84,8 +152,14 @@ impl Controller {
                 AppError::Clip("Progress channel required for conversion".to_string())
             })?;
 
-            let converted_path =
-                Converter::convert_to_mp4(&path, &self.clips_dir, progress_tx).await?;
+            // Wrap conversion in timeout (4 hours max)
+            let timeout_duration = tokio::time::Duration::from_secs(4 * 60 * 60);
+            let converted_path = tokio::time::timeout(
+                timeout_duration,
+                Converter::convert_to_mp4(&path, &self.clips_dir, progress_tx)
+            )
+            .await
+            .map_err(|_| AppError::Clip("Conversion timed out after 4 hours".to_string()))??;
 
             (converted_path, true)
         };
@@ -96,11 +170,8 @@ impl Controller {
         // Store the original source path for clipping
         self.current_video = Some(source_path.clone());
 
-        // Load clips for this video
-        let clips = self
-            .store
-            .get_clips_for_video(source_path.to_str().unwrap_or(""))?;
-        self.clip_count = clips.len() as i32;
+        // Load and validate clips for this video (get_clips validates file existence and updates clip_count)
+        self.get_clips()?;
 
         Ok(OpenVideoResponse {
             play_path: play_path.to_string_lossy().to_string(),
@@ -110,73 +181,32 @@ impl Controller {
         })
     }
 
-    /// Save a clip at the specified position.
-    ///
-    /// Uses the configured pre/post buffers to calculate the clip window.
-    /// Rejects the request if a clip is already being saved or no video is loaded.
-    /// The `is_clipping` flag is always reset, even when the operation fails.
-    pub async fn save_clip(&mut self, current_pos: f64, duration: f64) -> AppResult<ClipResult> {
-        if self.is_clipping {
-            return Err(AppError::ClipInProgress);
-        }
-
-        let video_path = self
-            .current_video
-            .as_ref()
-            .ok_or(AppError::NoVideoLoaded)?
-            .clone();
-
-        self.is_clipping = true;
-
-        let result = async {
-            let (start_time, end_time) = self.clipper.calculate_times(current_pos, duration);
-            let clip_number = self.clip_count + 1;
-            let output_path = self.clipper.output_path(&video_path, clip_number)?;
-
-            let clip_result = self
-                .clipper
-                .save_clip(&video_path, start_time, end_time, &output_path)
-                .await?;
-
-            if clip_result.success {
-                let _clip = self.store.add_clip(
-                    video_path.to_str().unwrap_or(""),
-                    &clip_result.path,
-                    start_time,
-                    end_time,
-                )?;
-                self.clip_count += 1;
-            }
-
-            Ok(clip_result)
-        }
-        .await;
-
-        self.is_clipping = false;
-
-        result
-    }
-
     /// Return all saved clips for the currently loaded video.
     ///
     /// Returns an empty vec if no video is loaded. Automatically removes
-    /// clips whose files have been deleted from disk.
-    pub fn get_clips(&self) -> AppResult<Vec<Clip>> {
+    /// clips whose files have been deleted or moved and updates clip_count.
+    pub fn get_clips(&mut self) -> AppResult<Vec<Clip>> {
         if let Some(video_path) = &self.current_video {
-            let clips = self
-                .store
-                .get_clips_for_video(video_path.to_str().unwrap_or(""))?;
+            let video_path_str = video_path
+                .to_str()
+                .ok_or_else(|| AppError::Clip("Video path contains non-UTF8 characters".to_string()))?;
+            let clips = self.store.get_clips_for_video(video_path_str)?;
 
             // Filter out clips whose files no longer exist on disk
             let mut valid_clips = Vec::new();
             for clip in clips {
-                if std::path::Path::new(&clip.clip_path).exists() {
+                let clip_path = std::path::Path::new(&clip.clip_path);
+                // Check if file exists and is accessible
+                if clip_path.exists() && clip_path.is_file() {
                     valid_clips.push(clip);
                 } else {
                     // Remove stale entry from database
                     let _ = self.store.delete_clip(clip.id);
                 }
             }
+
+            // Update clip_count to reflect actual number of valid clips
+            self.clip_count = valid_clips.len() as i32;
 
             Ok(valid_clips)
         } else {

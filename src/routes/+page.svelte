@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
-  import { open } from '@tauri-apps/plugin-dialog';
+  import { open, confirm } from '@tauri-apps/plugin-dialog';
+  import { stat } from '@tauri-apps/plugin-fs';
   import VideoPlayer from '$lib/components/VideoPlayer.svelte';
   import SettingsDialog from '$lib/components/SettingsDialog.svelte';
   import type { Settings, Clip } from '$lib/types';
@@ -35,10 +36,15 @@
     settingsOpen = true;
   }
 
-  function saveSettings(newSettings: Settings) {
-    settings = newSettings;
-    settingsOpen = false;
-    // TODO: Persist to backend
+  async function saveSettings(newSettings: Settings) {
+    try {
+      await api.saveSettings(newSettings);
+      settings = newSettings;
+      showToast('Settings saved', 'success');
+    } catch (e) {
+      showToast('Failed to save settings: ' + e, 'error');
+      throw e; // Re-throw so SettingsDialog can handle it
+    }
   }
 
   async function refreshClips() {
@@ -60,6 +66,18 @@
 
     if (selected) {
       try {
+        // Check file size for large files
+        const fileStat = await stat(selected);
+        const fileSizeGB = fileStat.size / (1024 * 1024 * 1024);
+
+        if (fileSizeGB > 10) {
+          const proceed = await confirm(
+            `This file is ${fileSizeGB.toFixed(1)}GB. Conversion may take a long time and require significant disk space. Continue?`,
+            { title: 'Large File Warning', kind: 'warning' }
+          );
+          if (!proceed) return;
+        }
+
         const response = await api.openVideo(selected);
         videoPath = response.play_path;
         duration = response.duration;
@@ -106,6 +124,15 @@
   let clipsRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   onMount(() => {
+    // Load saved settings from backend
+    api.getSettings()
+      .then(loadedSettings => {
+        settings = loadedSettings;
+      })
+      .catch((e) => {
+        console.error('Failed to load settings:', e);
+      });
+
     // Register global shortcuts
     const handleKeydown = async (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -114,7 +141,7 @@
 
       if (e.key === 'o' || e.key === 'O') {
         await openVideo();
-      } else if (e.key === 'c' || e.key === 'C') {
+      } else if (e.key.toLowerCase() === settings.clip_key.toLowerCase()) {
         await saveClip();
       }
     };
@@ -122,8 +149,9 @@
     window.addEventListener('keydown', handleKeydown);
 
     // Refresh clips list every 3 seconds to detect manual deletions
+    // Skip refresh when app is not visible to save resources
     clipsRefreshInterval = setInterval(async () => {
-      if (videoPath) {
+      if (videoPath && !document.hidden) {
         await refreshClips();
       }
     }, 3000);
@@ -136,7 +164,7 @@
   });
 </script>
 
-<div class="main-layout">
+<div class="main-layout" data-theme={settings.theme}>
   <div class="video-section">
     <div class="video-wrapper">
       <VideoPlayer {videoPath} {onPositionChange} />
@@ -145,7 +173,7 @@
     <div class="controls">
       <button onclick={openVideo}>Open (O)</button>
       <button onclick={saveClip} disabled={!videoPath}>
-        Clip (C)
+        Clip ({settings.clip_key.toUpperCase()})
       </button>
       <button onclick={openSettings}>Settings</button>
     </div>
@@ -193,6 +221,38 @@
 />
 
 <style>
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* Dark theme (default) */
+  .main-layout[data-theme="dark"], .main-layout:not([data-theme]) {
+    --bg-primary: #1a1a2e;
+    --bg-secondary: #16213e;
+    --bg-tertiary: #0f3460;
+    --text-primary: #e0e0e0;
+    --text-secondary: #888;
+    --accent: #e94560;
+    --border: #0f3460;
+    --danger: #9b2226;
+    --danger-text: #fec89a;
+  }
+
+  /* Light theme */
+  .main-layout[data-theme="light"] {
+    --bg-primary: #f5f5f5;
+    --bg-secondary: #e8e8e8;
+    --bg-tertiary: #d0d0d0;
+    --text-primary: #1a1a1a;
+    --text-secondary: #666;
+    --accent: #d63447;
+    --border: #c0c0c0;
+    --danger: #ae2012;
+    --danger-text: #fec89a;
+  }
+
   .main-layout {
     display: grid;
     grid-template-columns: 2fr 1fr;
@@ -200,10 +260,11 @@
     height: 100vh;
     gap: 1rem;
     padding: 1rem;
-    background: #1a1a2e;
-    color: #e0e0e0;
+    color: var(--text-primary);
     overflow: hidden;
     box-sizing: border-box;
+    transition: background 0.3s ease;
+    background: var(--bg-primary);
   }
 
   .video-section {
@@ -228,8 +289,8 @@
 
   button {
     padding: 0.5rem 1rem;
-    background: #16213e;
-    color: #e0e0e0;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -237,7 +298,7 @@
   }
 
   button:hover:not(:disabled) {
-    background: #0f3460;
+    background: var(--bg-tertiary);
   }
 
   button:disabled {
@@ -246,7 +307,7 @@
   }
 
   .status {
-    color: #888;
+    color: var(--text-secondary);
     font-size: 0.9rem;
     flex-shrink: 0;
   }
@@ -254,7 +315,7 @@
   .clips-section {
     display: flex;
     flex-direction: column;
-    background: #16213e;
+    background: var(--bg-secondary);
     padding: 1rem;
     border-radius: 4px;
     overflow: hidden;
@@ -264,7 +325,7 @@
   .clips-section h2 {
     flex-shrink: 0;
     margin-bottom: 1rem;
-    color: #e94560;
+    color: var(--accent);
   }
 
   .clips-section .placeholder {
@@ -286,9 +347,9 @@
     justify-content: space-between;
     padding: 0.5rem;
     margin-bottom: 0.5rem;
-    background: #1a1a2e;
+    background: var(--bg-primary);
     border-radius: 4px;
-    border-left: 3px solid #e94560;
+    border-left: 3px solid var(--accent);
   }
 
   .clip-info {
@@ -315,8 +376,8 @@
   }
 
   .delete-btn:hover {
-    background: #9b2226;
-    color: #fec89a;
+    background: var(--danger);
+    color: var(--danger-text);
   }
 
   .clip-name {
@@ -326,7 +387,7 @@
 
   .clip-time {
     font-size: 0.8rem;
-    color: #888;
+    color: var(--text-secondary);
     margin-top: 0.25rem;
   }
 

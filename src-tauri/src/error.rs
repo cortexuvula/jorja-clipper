@@ -1,5 +1,16 @@
 use thiserror::Error;
 
+/// Generate a helpful "FFmpeg not found" error message
+pub fn ffmpeg_not_found_error(operation: &str) -> AppError {
+    AppError::Ffmpeg(format!(
+        "FFmpeg not found while {}. Please install FFmpeg:\n\
+        • macOS: brew install ffmpeg\n\
+        • Windows: Download from https://ffmpeg.org/download.html\n\
+        • Linux: sudo apt install ffmpeg",
+        operation
+    ))
+}
+
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("FFmpeg error: {0}")]

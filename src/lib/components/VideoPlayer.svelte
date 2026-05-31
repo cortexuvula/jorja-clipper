@@ -18,19 +18,43 @@
   let isConverting = $state(false);
   let conversionProgress = $state(0);
   let conversionDuration = $state(0);
+  let isTranscoding = $state(false);
 
   // When videoPath changes, start local HTTP server for streaming
   // This avoids asset:// protocol issues with video streaming on Linux/WebKitGTK
+  // Uses a cancellation flag to prevent stale promises from overwriting videoUrl
   $effect(() => {
-    if (videoPath) {
-      api.startVideoServer(videoPath)
+    const currentPath = videoPath;
+    let cancelled = false;
+
+    if (currentPath) {
+      api.startVideoServer(currentPath)
         .then(url => {
-          videoUrl = url;
+          if (!cancelled) {
+            videoUrl = url;
+          }
         })
-        .catch(e => console.error('Failed to start video server:', e));
+        .catch(e => {
+          if (!cancelled) {
+            console.error('Failed to start video server:', e);
+          }
+        });
     } else {
+      // Pause and reset video element when no video is loaded
+      if (videoElement) {
+        videoElement.pause();
+        videoElement.removeAttribute('src');
+        videoElement.load();
+      }
       videoUrl = '';
+      currentTime = 0;
+      duration = 0;
+      paused = true;
     }
+
+    return () => {
+      cancelled = true;
+    };
   });
 
   // Update parent when position changes
@@ -46,6 +70,7 @@
       isConverting = true;
       conversionProgress = 0;
       conversionDuration = event.payload;
+      isTranscoding = false;
     });
 
     const unlistenProgress = listen<number>('conversion-progress', (event) => {
@@ -55,12 +80,18 @@
     const unlistenCompleted = listen<string>('conversion-completed', () => {
       isConverting = false;
       conversionProgress = 100;
+      isTranscoding = false;
     });
 
     const unlistenFailed = listen<string>('conversion-failed', (event) => {
       isConverting = false;
       conversionProgress = 0;
+      isTranscoding = false;
       console.error('Conversion failed:', event.payload);
+    });
+
+    const unlistenFallback = listen('conversion-fallback', () => {
+      isTranscoding = true;
     });
 
     // Keyboard shortcuts
@@ -88,6 +119,7 @@
       unlistenProgress.then(f => f());
       unlistenCompleted.then(f => f());
       unlistenFailed.then(f => f());
+      unlistenFallback.then(f => f());
       window.removeEventListener('keydown', handleKeydown);
     };
   });
@@ -125,7 +157,7 @@
           <polyline points="12 6 12 12 16 14"></polyline>
         </svg>
         <p class="conversion-title">Converting video for playback...</p>
-        <p class="conversion-subtitle">This may take a few minutes</p>
+        <p class="conversion-subtitle">{isTranscoding ? 'Re-encoding required — this may take several minutes' : 'This may take a few minutes'}</p>
         <div class="progress-bar">
           <div class="progress-fill" style="width: {conversionProgress}%"></div>
         </div>
