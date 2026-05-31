@@ -5,9 +5,6 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
 use crate::error::{AppError, AppResult};
 
 /// Web-compatible video formats (can be played directly in HTML5 video)
