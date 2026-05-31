@@ -33,6 +33,21 @@ impl Clipper {
         (start, end)
     }
 
+    /// Validate that the clip has a positive duration.
+    pub fn validate_times(start: f64, end: f64) -> Result<(), String> {
+        if end <= start {
+            return Err(format!(
+                "Invalid clip: start ({:.1}s) >= end ({:.1}s). Adjust position or buffer settings.",
+                start, end
+            ));
+        }
+        // Use tolerance for floating-point precision (e.g. 10.1 - 10.0 ≈ 0.0999...)
+        if end - start < 0.099 {
+            return Err("Clip duration too short (minimum 0.1s)".to_string());
+        }
+        Ok(())
+    }
+
     pub fn output_path(&self, video_path: &Path, clip_number: i32, output_dir: Option<&Path>) -> AppResult<PathBuf> {
         let clips_dir = match output_dir {
             Some(dir) => dir.to_path_buf(),
@@ -145,6 +160,24 @@ mod tests {
         let (start, end) = clipper.calculate_times(118.0, 120.0);
         assert_eq!(start, 113.0);
         assert_eq!(end, 120.0);
+    }
+
+    #[test]
+    fn test_validate_times() {
+        // Valid clip
+        assert!(Clipper::validate_times(10.0, 20.0).is_ok());
+
+        // Zero duration
+        assert!(Clipper::validate_times(10.0, 10.0).is_err());
+
+        // Negative duration (start > end)
+        assert!(Clipper::validate_times(20.0, 10.0).is_err());
+
+        // Too short (< 0.1s)
+        assert!(Clipper::validate_times(10.0, 10.05).is_err());
+
+        // Minimum valid duration
+        assert!(Clipper::validate_times(10.0, 10.1).is_ok());
     }
 
     #[test]

@@ -3,9 +3,10 @@
   import { listen } from '@tauri-apps/api/event';
   import { api } from '$lib/api';
 
-  let { videoPath = '', onPositionChange } = $props<{
+  let { videoPath = '', onPositionChange, settingsOpen = false } = $props<{
     videoPath?: string;
     onPositionChange?: (position: number, duration: number) => void;
+    settingsOpen?: boolean;
   }>();
 
   let videoElement = $state() as HTMLVideoElement;
@@ -99,6 +100,9 @@
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return; // Don't intercept when typing
       }
+
+      // Don't trigger shortcuts when settings dialog is open
+      if (settingsOpen) return;
 
       if (e.code === 'Space' && videoPath) {
         e.preventDefault();

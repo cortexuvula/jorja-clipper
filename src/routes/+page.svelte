@@ -25,6 +25,12 @@
   }
 
   let settingsOpen = $state(false);
+  let savedSettings: Settings = $state({
+    buffer_before: 5.0,
+    buffer_after: 5.0,
+    clip_key: 'c',
+    theme: 'dark'
+  });
   let settings: Settings = $state({
     buffer_before: 5.0,
     buffer_after: 5.0,
@@ -33,6 +39,8 @@
   });
 
   function openSettings() {
+    // Save current settings so we can revert on cancel
+    savedSettings = structuredClone(settings);
     settingsOpen = true;
   }
 
@@ -139,6 +147,9 @@
         return; // Don't intercept when typing
       }
 
+      // Don't trigger shortcuts when settings dialog is open
+      if (settingsOpen) return;
+
       if (e.key === 'o' || e.key === 'O') {
         await openVideo();
       } else if (e.key.toLowerCase() === settings.clip_key.toLowerCase()) {
@@ -167,7 +178,7 @@
 <div class="main-layout" data-theme={settings.theme}>
   <div class="video-section">
     <div class="video-wrapper">
-      <VideoPlayer {videoPath} {onPositionChange} />
+      <VideoPlayer {videoPath} {onPositionChange} settingsOpen={settingsOpen} />
     </div>
 
     <div class="controls">
@@ -217,7 +228,11 @@
   bind:open={settingsOpen}
   bind:settings={settings}
   onsave={saveSettings}
-  oncancel={() => { settingsOpen = false; }}
+  oncancel={() => {
+    // Revert to saved settings on cancel
+    settings = structuredClone(savedSettings);
+    settingsOpen = false;
+  }}
 />
 
 <style>

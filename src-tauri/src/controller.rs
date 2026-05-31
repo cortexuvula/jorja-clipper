@@ -1,8 +1,6 @@
 use std::path::PathBuf;
-use tokio::sync::mpsc;
 
 use crate::clipper::Clipper;
-use crate::converter::{ConversionStatus, Converter};
 use crate::error::{AppError, AppResult};
 use crate::settings::Settings;
 use crate::storage::{Clip, ClipStore};
@@ -67,19 +65,6 @@ impl Controller {
     }
 }
 
-/// Response from opening a video, includes path to play and metadata
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct OpenVideoResponse {
-    /// Path to the video file to play (may be converted)
-    pub play_path: String,
-    /// Original source path (for clipping)
-    pub source_path: String,
-    /// Video duration in seconds
-    pub duration: f64,
-    /// Whether conversion was performed
-    pub converted: bool,
-}
-
 /// Central orchestrator that owns all backend components.
 ///
 /// The controller is the single entry point for every high-level operation
@@ -119,65 +104,6 @@ impl Controller {
             clip_count: 0,
             is_clipping: false,
             clips_dir,
-        })
-    }
-
-    /// Open a video file, converting if necessary for web playback.
-    ///
-    /// Returns information about the video including the path to play and duration.
-    /// Emits progress updates via the channel for non-web formats that need conversion.
-    /// Times out after 4 hours to prevent infinite hangs.
-    pub async fn open_video(
-        &mut self,
-        path: PathBuf,
-        progress_tx: Option<mpsc::Sender<ConversionStatus>>,
-    ) -> AppResult<OpenVideoResponse> {
-        // Check if file exists before doing any work
-        if !path.exists() {
-            return Err(AppError::Clip(format!(
-                "Video file does not exist: {}",
-                path.display()
-            )));
-        }
-
-        let source_path = path.clone();
-
-        // Check if file is web-compatible
-        let (play_path, converted) = if Converter::is_web_compatible(&path) {
-            // Direct play, no conversion needed
-            (path.clone(), false)
-        } else {
-            // Need to convert
-            let progress_tx = progress_tx.ok_or_else(|| {
-                AppError::Clip("Progress channel required for conversion".to_string())
-            })?;
-
-            // Wrap conversion in timeout (4 hours max)
-            let timeout_duration = tokio::time::Duration::from_secs(4 * 60 * 60);
-            let converted_path = tokio::time::timeout(
-                timeout_duration,
-                Converter::convert_to_mp4(&path, &self.clips_dir, progress_tx)
-            )
-            .await
-            .map_err(|_| AppError::Clip("Conversion timed out after 4 hours".to_string()))??;
-
-            (converted_path, true)
-        };
-
-        // Get duration using ffprobe
-        let duration = Converter::get_duration(&source_path).await?;
-
-        // Store the original source path for clipping
-        self.current_video = Some(source_path.clone());
-
-        // Load and validate clips for this video (get_clips validates file existence and updates clip_count)
-        self.get_clips()?;
-
-        Ok(OpenVideoResponse {
-            play_path: play_path.to_string_lossy().to_string(),
-            source_path: source_path.to_string_lossy().to_string(),
-            duration,
-            converted,
         })
     }
 

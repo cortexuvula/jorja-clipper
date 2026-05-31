@@ -42,7 +42,7 @@ impl VideoServer {
         thread::spawn(move || {
             for request in listener.incoming() {
                 match request {
-                    Ok(mut stream) => {
+                    Ok(stream) => {
                         let video_path = match video_path.lock() {
                             Ok(guard) => guard.clone(),
                             Err(e) => {
@@ -50,11 +50,16 @@ impl VideoServer {
                                 continue;
                             }
                         };
-                        if let Some(path) = video_path {
-                            if let Err(e) = handle_request(&mut stream, &path) {
-                                eprintln!("Error handling request: {}", e);
+                        // Handle each request in its own thread to support
+                        // concurrent range requests from the HTML5 video element
+                        thread::spawn(move || {
+                            let mut stream = stream;
+                            if let Some(path) = video_path {
+                                if let Err(e) = handle_request(&mut stream, &path) {
+                                    eprintln!("Error handling request: {}", e);
+                                }
                             }
-                        }
+                        });
                     }
                     Err(e) => {
                         eprintln!("Connection failed: {}", e);
@@ -124,6 +129,13 @@ fn handle_request(
     // Open the file
     let mut file = File::open(video_path)?;
     let file_size = file.metadata()?.len();
+
+    // Handle empty files
+    if file_size == 0 {
+        let response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 14\r\nConnection: close\r\n\r\nEmpty file";
+        stream.write_all(response.as_bytes())?;
+        return Ok(());
+    }
 
     // Determine MIME type from file extension
     let mime_type = match video_path.extension().and_then(|e| e.to_str()) {
