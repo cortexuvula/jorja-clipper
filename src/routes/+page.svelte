@@ -38,9 +38,16 @@
     theme: 'dark'
   });
 
+  // Fallback for older WebView2 versions that don't support structuredClone
+  function cloneSettings<T>(obj: T): T {
+    return typeof structuredClone === 'function'
+      ? structuredClone(obj)
+      : JSON.parse(JSON.stringify(obj));
+  }
+
   function openSettings() {
     // Save current settings so we can revert on cancel
-    savedSettings = structuredClone(settings);
+    savedSettings = cloneSettings(settings);
     settingsOpen = true;
   }
 
@@ -230,7 +237,7 @@
   onsave={saveSettings}
   oncancel={() => {
     // Revert to saved settings on cancel
-    settings = structuredClone(savedSettings);
+    settings = cloneSettings(savedSettings);
     settingsOpen = false;
   }}
 />
