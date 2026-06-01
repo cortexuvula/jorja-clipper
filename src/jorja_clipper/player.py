@@ -1,7 +1,23 @@
 """Player wrapper around python-mpv."""
 
+import ctypes.util
 import sys
 from pathlib import Path
+
+# Patch ctypes.util.find_library to check Homebrew paths on Apple Silicon macOS
+if sys.platform == "darwin":
+    _original_find_library = ctypes.util.find_library
+
+    def _patched_find_library(name):
+        result = _original_find_library(name)
+        if result is None and name == "mpv":
+            # Check Apple Silicon and Intel Homebrew paths
+            for lib_path in ["/opt/homebrew/lib/libmpv.dylib", "/usr/local/lib/libmpv.dylib"]:
+                if Path(lib_path).exists():
+                    return lib_path
+        return result
+
+    ctypes.util.find_library = _patched_find_library
 
 import mpv
 

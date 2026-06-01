@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
@@ -43,7 +44,7 @@ class ClipListModel(QAbstractListModel):
         self._clips.append(entry)
         self.endInsertRows()
 
-    def clip_at(self, index: int) -> ClipEntry | None:
+    def clip_at(self, index: int) -> Optional[ClipEntry]:
         """Return the clip entry at the given row index."""
         if 0 <= index < len(self._clips):
             return self._clips[index]
