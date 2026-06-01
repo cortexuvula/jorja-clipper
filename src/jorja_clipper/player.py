@@ -1,6 +1,7 @@
 """Player wrapper around python-mpv."""
 
 import ctypes.util
+import locale
 import sys
 from pathlib import Path
 
@@ -35,17 +36,26 @@ class Player:
     def _ensure_mpv(self):
         if self._mpv is not None:
             return
-        kwargs = {
-            "input_default_bindings": False,
-            "input_vo_keyboard": False,
-            "osc": False,
-        }
-        if sys.platform.startswith("darwin"):
-            # macOS: libmpv + NSView via wid option.
-            kwargs["vo"] = "libmpv"
-        if self._wid is not None:
-            kwargs["wid"] = self._wid
-        self._mpv = mpv.MPV(**kwargs)
+
+        # libmpv requires LC_NUMERIC to be "C" — PySide6/Qt may change it
+        # to e.g. "en_US.UTF-8", causing mpv_create() to fail with a NULL
+        # handle and segfault in mpv_set_option. Save, set, and restore.
+        saved_numeric = locale.setlocale(locale.LC_NUMERIC)
+        locale.setlocale(locale.LC_NUMERIC, "C")
+        try:
+            kwargs = {
+                "input_default_bindings": False,
+                "input_vo_keyboard": False,
+                "osc": False,
+            }
+            if sys.platform.startswith("darwin"):
+                # macOS: libmpv + NSView via wid option.
+                kwargs["vo"] = "libmpv"
+            if self._wid is not None:
+                kwargs["wid"] = self._wid
+            self._mpv = mpv.MPV(**kwargs)
+        finally:
+            locale.setlocale(locale.LC_NUMERIC, saved_numeric)
 
         @self._mpv.property_observer("duration")
         def _on_duration(_name, value):
