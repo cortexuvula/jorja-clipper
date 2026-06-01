@@ -304,3 +304,787 @@ impl Converter {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_web_compatible_mp4() {
+        assert!(Converter::is_web_compatible(Path::new("video.mp4")));
+        assert!(Converter::is_web_compatible(Path::new("/path/to/clip.MP4")));
+        assert!(Converter::is_web_compatible(Path::new("test.Mp4")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_webm() {
+        assert!(Converter::is_web_compatible(Path::new("video.webm")));
+        assert!(Converter::is_web_compatible(Path::new("clip.WEBM")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_ogg() {
+        assert!(Converter::is_web_compatible(Path::new("video.ogg")));
+        assert!(Converter::is_web_compatible(Path::new("clip.ogv")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_m4v() {
+        assert!(Converter::is_web_compatible(Path::new("video.m4v")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_non_web_formats() {
+        assert!(!Converter::is_web_compatible(Path::new("video.mkv")));
+        assert!(!Converter::is_web_compatible(Path::new("clip.avi")));
+        assert!(!Converter::is_web_compatible(Path::new("test.mov")));
+        assert!(!Converter::is_web_compatible(Path::new("file.ts")));
+        assert!(!Converter::is_web_compatible(Path::new("video.wmv")));
+        assert!(!Converter::is_web_compatible(Path::new("clip.flv")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_no_extension() {
+        assert!(!Converter::is_web_compatible(Path::new("noextension")));
+        assert!(!Converter::is_web_compatible(Path::new("")));
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_hhmmss() {
+        let result = Converter::parse_ffmpeg_time("01:30:45.50").unwrap();
+        assert!((result - (3600.0 + 1800.0 + 45.5)).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_hhmmss_zero() {
+        let result = Converter::parse_ffmpeg_time("00:00:00.00").unwrap();
+        assert!((result - 0.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_seconds_only() {
+        let result = Converter::parse_ffmpeg_time("123.456").unwrap();
+        assert!((result - 123.456).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_invalid_format() {
+        assert!(Converter::parse_ffmpeg_time("01:30").is_err()); // Only HH:MM
+        assert!(Converter::parse_ffmpeg_time("invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_invalid_values() {
+        assert!(Converter::parse_ffmpeg_time("abc:30:45.00").is_err());
+        assert!(Converter::parse_ffmpeg_time("01:abc:45.00").is_err());
+        assert!(Converter::parse_ffmpeg_time("01:30:abc").is_err());
+    }
+
+    #[test]
+    fn test_get_output_path_normal() {
+        let input = Path::new("/videos/my_video.mkv");
+        let output_dir = Path::new("/output");
+
+        let result = Converter::get_output_path(input, output_dir).unwrap();
+        assert_eq!(result, PathBuf::from("/output/my_video.converted.mp4"));
+    }
+
+    #[test]
+    fn test_get_output_path_complex_name() {
+        let input = Path::new("/home/user/Videos/2024-game-highlights.avi");
+        let output_dir = Path::new("/tmp/clips");
+
+        let result = Converter::get_output_path(input, output_dir).unwrap();
+        assert_eq!(result, PathBuf::from("/tmp/clips/2024-game-highlights.converted.mp4"));
+    }
+
+    #[test]
+    fn test_get_output_path_invalid_input() {
+        let input = Path::new("");
+        let output_dir = Path::new("/output");
+
+        let result = Converter::get_output_path(input, output_dir);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_edge_cases() {
+        // Test with just seconds (no decimal)
+        let result = Converter::parse_ffmpeg_time("123").unwrap();
+        assert_eq!(result, 123.0);
+
+        // Test with zero
+        let result = Converter::parse_ffmpeg_time("0").unwrap();
+        assert_eq!(result, 0.0);
+
+        // Test with HH:MM:SS format
+        let result = Converter::parse_ffmpeg_time("01:02:03.456").unwrap();
+        assert_eq!(result, 3723.456);
+
+        // Test with large hours
+        let result = Converter::parse_ffmpeg_time("99:59:59.999").unwrap();
+        assert!((result - 359999.999).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_invalid_parts() {
+        // Too many colons
+        assert!(Converter::parse_ffmpeg_time("01:02:03:04").is_err());
+
+        // Empty string
+        assert!(Converter::parse_ffmpeg_time("").is_err());
+
+        // Only colons
+        assert!(Converter::parse_ffmpeg_time("::").is_err());
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_negative_values() {
+        // Note: The parser accepts negative values (they parse as valid f64)
+        // This might not be ideal for video timestamps, but it's the current behavior
+        let result = Converter::parse_ffmpeg_time("-1:02:03.456");
+        assert!(result.is_ok());
+        let expected = -1.0 * 3600.0 + 2.0 * 60.0 + 3.456;
+        assert!((result.unwrap() - expected).abs() < 0.001);
+
+        // Negative minutes
+        let result = Converter::parse_ffmpeg_time("01:-2:03.456");
+        assert!(result.is_ok());
+        let expected = 1.0 * 3600.0 + (-2.0) * 60.0 + 3.456;
+        assert!((result.unwrap() - expected).abs() < 0.001);
+
+        // Negative seconds
+        let result = Converter::parse_ffmpeg_time("01:02:-3.456");
+        assert!(result.is_ok());
+        let expected = 1.0 * 3600.0 + 2.0 * 60.0 + (-3.456);
+        assert!((result.unwrap() - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_parse_ffmpeg_time_overflow_values() {
+        // Minutes > 59 (should still parse, just unusual)
+        let result = Converter::parse_ffmpeg_time("01:99:03.456");
+        assert!(result.is_ok());
+        let expected = 3600.0 + 99.0 * 60.0 + 3.456;
+        assert!((result.unwrap() - expected).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_is_web_compatible_case_sensitivity() {
+        // Should handle case-insensitive extensions
+        assert!(Converter::is_web_compatible(Path::new("video.MP4")));
+        assert!(Converter::is_web_compatible(Path::new("video.WEBM")));
+        assert!(Converter::is_web_compatible(Path::new("video.OGG")));
+        assert!(Converter::is_web_compatible(Path::new("video.M4V")));
+    }
+
+    #[test]
+    fn test_is_web_compatible_with_path() {
+        // Should work with full paths
+        assert!(Converter::is_web_compatible(Path::new("/home/user/videos/test.mp4")));
+        assert!(Converter::is_web_compatible(Path::new("C:\\Users\\test\\video.webm")));
+        assert!(!Converter::is_web_compatible(Path::new("/home/user/videos/test.mkv")));
+    }
+
+    #[test]
+    fn test_get_output_path_with_special_characters() {
+        let input = Path::new("/videos/my video (2024).mkv");
+        let output_dir = Path::new("/output");
+
+        let result = Converter::get_output_path(input, output_dir).unwrap();
+        assert_eq!(result, PathBuf::from("/output/my video (2024).converted.mp4"));
+    }
+
+    #[test]
+    fn test_get_output_path_unicode() {
+        let input = Path::new("/videos/видео.mkv");
+        let output_dir = Path::new("/output");
+
+        let result = Converter::get_output_path(input, output_dir).unwrap();
+        assert_eq!(result, PathBuf::from("/output/видео.converted.mp4"));
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_real_video() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        // Create a temporary directory
+        let temp_dir = TempDir::new().unwrap();
+        let test_video = temp_dir.path().join("test_video.mp4");
+
+        // Create a small test video using FFmpeg (5 seconds of black video)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=black:s=320x240:d=5",
+                "-c:v", "libx264",
+                "-t", "5",
+                test_video.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            eprintln!("FFmpeg output: {:?}", String::from_utf8_lossy(&output.stderr));
+            panic!("Failed to create test video");
+        }
+
+        // Test get_duration
+        let duration = Converter::get_duration(&test_video).await.unwrap();
+
+        // Duration should be approximately 5 seconds (allow some tolerance)
+        assert!(duration >= 4.5 && duration <= 5.5, "Expected ~5 seconds, got {}", duration);
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_web_format() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+        use tokio::sync::mpsc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_video = temp_dir.path().join("input.mp4");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a small test video (MP4 format, already web-compatible)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=blue:s=320x240:d=2",
+                "-c:v", "libx264",
+                "-t", "2",
+                input_video.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        // Create channel for progress updates
+        let (tx, mut rx) = mpsc::channel(100);
+
+        // Convert the video
+        let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Conversion failed: {:?}", result.err());
+
+        let output_path = result.unwrap();
+        assert!(output_path.exists(), "Output file should exist");
+        assert!(output_path.to_str().unwrap().ends_with(".converted.mp4"));
+
+        // Check that we received progress updates
+        let mut received_started = false;
+        let mut received_completed = false;
+
+        while let Ok(status) = rx.try_recv() {
+            match status {
+                ConversionStatus::Started { .. } => received_started = true,
+                ConversionStatus::Completed { .. } => received_completed = true,
+                _ => {}
+            }
+        }
+
+        assert!(received_started, "Should receive Started status");
+        assert!(received_completed, "Should receive Completed status");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_non_web_format() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+        use tokio::sync::mpsc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_video = temp_dir.path().join("input.mkv");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a small test video in MKV format (non-web format)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=red:s=320x240:d=2",
+                "-c:v", "libx264",
+                "-t", "2",
+                input_video.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        // Create channel for progress updates
+        let (tx, mut rx) = mpsc::channel(100);
+
+        // Convert the video
+        let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
+
+        // Should succeed
+        assert!(result.is_ok(), "Conversion failed: {:?}", result.err());
+
+        let output_path = result.unwrap();
+        assert!(output_path.exists(), "Output file should exist");
+
+        // Verify the output is actually MP4 format
+        let output = Command::new("ffprobe")
+            .args([
+                "-v", "error",
+                "-show_entries", "format=format_name",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                output_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        let format = String::from_utf8_lossy(&output.stdout);
+        assert!(format.contains("mp4"), "Output should be MP4 format, got: {}", format);
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_invalid_file() {
+        let non_existent = Path::new("/nonexistent/video.mp4");
+        let result = Converter::get_duration(non_existent).await;
+        assert!(result.is_err(), "Should fail for non-existent file");
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_corrupted_file() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let corrupted_file = temp_dir.path().join("corrupted.mp4");
+
+        // Write random bytes to create a corrupted file
+        std::fs::write(&corrupted_file, b"This is not a valid video file").unwrap();
+
+        let result = Converter::get_duration(&corrupted_file).await;
+        assert!(result.is_err(), "Should fail for corrupted file");
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_empty_file() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let empty_file = temp_dir.path().join("empty.mp4");
+
+        // Create an empty file
+        std::fs::write(&empty_file, b"").unwrap();
+
+        let result = Converter::get_duration(&empty_file).await;
+        assert!(result.is_err(), "Should fail for empty file");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_with_transcode_fallback() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+        use tokio::sync::mpsc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_video = temp_dir.path().join("input_vp9.webm");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a video with VP9 codec and Opus audio in WebM container
+        // This combination should force transcode when converting to MP4
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=green:s=320x240:d=2",
+                "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=2",
+                "-c:v", "libvpx-vp9",
+                "-c:a", "libopus",
+                "-t", "2",
+                input_video.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            eprintln!("FFmpeg output: {:?}", String::from_utf8_lossy(&output.stderr));
+            panic!("Failed to create test video with VP9 codec");
+        }
+
+        // Create channel for progress updates
+        let (tx, mut rx) = mpsc::channel(100);
+
+        // Convert the video - should trigger fallback to transcode
+        let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
+
+        // Should succeed (either via stream copy or transcode)
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+
+        let output_path = result.unwrap();
+        assert!(output_path.exists(), "Output file should exist");
+
+        // Drain the channel and check what statuses we received
+        let mut statuses = vec![];
+        while let Ok(status) = rx.try_recv() {
+            statuses.push(format!("{:?}", status));
+        }
+
+        eprintln!("Received statuses: {:?}", statuses);
+
+        // The conversion should have completed (either way)
+        assert!(statuses.iter().any(|s| s.contains("Completed")), "Should receive Completed status");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_nonexistent_input() {
+        use tempfile::TempDir;
+        use tokio::sync::mpsc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let nonexistent_video = temp_dir.path().join("nonexistent.mp4");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        let (tx, _rx) = mpsc::channel(100);
+
+        let result = Converter::convert_to_mp4(&nonexistent_video, &output_dir, tx).await;
+
+        assert!(result.is_err(), "Should fail for non-existent input file");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_with_progress_updates() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+        use tokio::sync::mpsc;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_video = temp_dir.path().join("long_video.mp4");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a longer video (10 seconds) to ensure we get progress updates
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=blue:s=640x480:d=10",
+                "-c:v", "libx264",
+                "-preset", "ultrafast",
+                "-t", "10",
+                input_video.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        let (tx, mut rx) = mpsc::channel(100);
+
+        // Convert the video
+        let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
+
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+
+        // Collect all progress updates
+        let mut progress_updates = vec![];
+        while let Ok(status) = rx.try_recv() {
+            if let ConversionStatus::Progress(percent) = status {
+                progress_updates.push(percent);
+            }
+        }
+
+        // We should have received at least one progress update
+        assert!(!progress_updates.is_empty(), "Should receive progress updates");
+
+        // The last update should be 100%
+        assert!(progress_updates.last().map(|&p| (p - 100.0).abs() < 0.1).unwrap_or(false),
+                "Last progress should be 100%");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_with_corrupted_video() {
+        use std::fs;
+        use tempfile::tempdir;
+
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("corrupted.mkv");
+        let output_dir = temp_dir.path().to_path_buf();
+
+        // Write invalid data that FFmpeg can't parse
+        fs::write(&input_path, b"This is not a valid video file").unwrap();
+
+        let (tx, _rx) = mpsc::channel(100);
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+
+        // Should fail during conversion (either at get_duration or convert step)
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_convert_with_invalid_output_directory() {
+        use std::fs;
+        use tempfile::tempdir;
+        use tokio::process::Command;
+
+        let temp_dir = tempdir().unwrap();
+        let input_path = temp_dir.path().join("input.mp4");
+        let output_dir = temp_dir.path().join("nonexistent").join("nested");
+
+        // Create a valid input video
+        let output = Command::new("ffmpeg")
+            .args(&[
+                "-y",
+                "-f", "lavfi",
+                "-i", "testsrc=duration=1:size=320x240:rate=1",
+                "-c:v", "libx264",
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video: {:?}", String::from_utf8_lossy(&output.stderr));
+        }
+
+        let (tx, _rx) = mpsc::channel(100);
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+
+        // Should fail because output directory doesn't exist and can't be created
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_with_existing_output_directory() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("input.mp4");
+        let output_dir = temp_dir.path().join("output_subdir");
+
+        // Create the output directory first
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a valid input video
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=green:s=320x240:d=2",
+                "-c:v", "libx264",
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        let (tx, _rx) = mpsc::channel(100);
+
+        // Should succeed
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+
+        // Verify the output file exists in the output directory
+        let output_path = result.unwrap();
+        assert!(output_path.exists(), "Output file should exist");
+        assert!(output_path.starts_with(&output_dir), "Output should be in the specified directory");
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_very_short_video() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let video_path = temp_dir.path().join("short_video.mp4");
+
+        // Create a very short video (0.1 seconds)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=black:s=320x240:d=0.1",
+                "-c:v", "libx264",
+                "-t", "0.1",
+                video_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        let duration = Converter::get_duration(&video_path).await.unwrap();
+
+        // Duration should be very small but >= 0
+        assert!(duration >= 0.0);
+        assert!(duration < 1.0);
+    }
+
+    #[tokio::test]
+    async fn test_get_duration_longer_video() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let video_path = temp_dir.path().join("longer_video.mp4");
+
+        // Create a longer video (30 seconds)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=blue:s=320x240:d=30",
+                "-c:v", "libx264",
+                "-t", "30",
+                video_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        let duration = Converter::get_duration(&video_path).await.unwrap();
+
+        // Duration should be approximately 30 seconds
+        assert!(duration >= 29.0);
+        assert!(duration <= 31.0);
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_with_audio() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("input_with_audio.mp4");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a video with audio
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=red:s=320x240:d=2",
+                "-f", "lavfi",
+                "-i", "sine=frequency=440:duration=2",
+                "-c:v", "libx264",
+                "-c:a", "aac",
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video with audio");
+        }
+
+        let (tx, _rx) = mpsc::channel(100);
+
+        // Should succeed
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+
+        let output_path = result.unwrap();
+        assert!(output_path.exists(), "Output file should exist");
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_webm_format() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("input.webm");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create a WebM video
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=green:s=320x240:d=2",
+                "-c:v", "libvpx-vp9",
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create WebM test video");
+        }
+
+        let (tx, _rx) = mpsc::channel(100);
+
+        // Should succeed (WebM is web-compatible but may need conversion)
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_convert_to_mp4_ogg_format() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("input.ogg");
+        let output_dir = temp_dir.path().join("output");
+        std::fs::create_dir_all(&output_dir).unwrap();
+
+        // Create an OGG video
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=blue:s=320x240:d=2",
+                "-c:v", "libtheora",
+                "-q:v", "5",
+                input_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            // OGG/Theora might not be available, skip this test
+            eprintln!("Skipping OGG test - codec not available");
+            return;
+        }
+
+        let (tx, _rx) = mpsc::channel(100);
+
+        // Should succeed
+        let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
+        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+    }
+}

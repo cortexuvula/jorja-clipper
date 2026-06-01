@@ -206,4 +206,244 @@ mod tests {
 
         assert!(result.is_err());
     }
+
+    #[test]
+    fn test_calculate_times_edge_cases() {
+        let clipper = Clipper::new(5.0, 5.0);
+
+        // At exact start
+        let (start, end) = clipper.calculate_times(0.0, 120.0);
+        assert_eq!(start, 0.0);
+        assert_eq!(end, 5.0);
+
+        // At exact end
+        let (start, end) = clipper.calculate_times(120.0, 120.0);
+        assert_eq!(start, 115.0);
+        assert_eq!(end, 120.0);
+
+        // Short video
+        let (start, end) = clipper.calculate_times(5.0, 10.0);
+        assert_eq!(start, 0.0);
+        assert_eq!(end, 10.0);
+    }
+
+    #[test]
+    fn test_calculate_times_custom_buffers() {
+        let clipper = Clipper::new(10.0, 20.0);
+        let (start, end) = clipper.calculate_times(50.0, 120.0);
+        assert_eq!(start, 40.0);
+        assert_eq!(end, 70.0);
+    }
+
+    #[test]
+    fn test_validate_times_boundary() {
+        // Just above tolerance threshold (0.099)
+        assert!(Clipper::validate_times(10.0, 10.11).is_ok());
+
+        // Exactly at tolerance boundary (0.099) - should pass since it's not < 0.099
+        assert!(Clipper::validate_times(10.0, 10.099).is_ok());
+
+        // Just below tolerance threshold - should fail
+        assert!(Clipper::validate_times(10.0, 10.098).is_err());
+    }
+
+    #[test]
+    fn test_output_path_with_custom_dir() {
+        let clipper = Clipper::new(5.0, 5.0);
+        let tmp_dir = std::env::temp_dir().join("jorja_clipper_test_custom");
+        let _ = std::fs::create_dir_all(&tmp_dir);
+        let video_path = Path::new("/test/video.mp4");
+
+        let output = clipper.output_path(video_path, 42, Some(&tmp_dir)).unwrap();
+
+        assert!(output.starts_with(&tmp_dir));
+        assert!(output.to_str().unwrap().contains("video_clip_00042.mp4"));
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_output_path_creates_directory() {
+        let clipper = Clipper::new(5.0, 5.0);
+        let tmp_dir = std::env::temp_dir().join("jorja_clipper_test_new_dir");
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+
+        let video_path = Path::new("/test/video.mp4");
+        let result = clipper.output_path(video_path, 1, Some(&tmp_dir));
+
+        assert!(result.is_ok());
+        assert!(tmp_dir.exists());
+
+        let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_clip_result_serialization() {
+        let result = ClipResult {
+            success: true,
+            path: "/test/clip.mp4".to_string(),
+            start_time: 10.5,
+            end_time: 20.3,
+            error: None,
+        };
+
+        let json = serde_json::to_string(&result).unwrap();
+        let deserialized: ClipResult = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.success, result.success);
+        assert_eq!(deserialized.path, result.path);
+        assert_eq!(deserialized.start_time, result.start_time);
+    }
+
+    #[test]
+    fn test_clipper_clone() {
+        let clipper = Clipper::new(5.0, 10.0);
+        let cloned = clipper.clone();
+
+        assert_eq!(cloned.buffer_before, 5.0);
+        assert_eq!(cloned.buffer_after, 10.0);
+    }
+
+    #[tokio::test]
+    async fn test_save_clip_with_real_video() {
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let video_path = temp_dir.path().join("test_video.mp4");
+        let output_path = temp_dir.path().join("output_clip.mp4");
+
+        // Create a small test video using FFmpeg (10 seconds)
+        let output = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f", "lavfi",
+                "-i", "color=c=blue:s=320x240:d=10",
+                "-c:v", "libx264",
+                "-t", "10",
+                video_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+
+        if !output.status.success() {
+            panic!("Failed to create test video");
+        }
+
+        let clipper = Clipper::new(2.0, 2.0);
+
+        // Save a clip from 5.0 to 7.0 seconds
+        let result = clipper.save_clip(&video_path, 5.0, 7.0, &output_path).await;
+
+        assert!(result.is_ok(), "Should succeed: {:?}", result.err());
+        let clip_result = result.unwrap();
+
+        assert!(clip_result.success);
+        assert_eq!(clip_result.path, output_path.to_str().unwrap());
+        assert_eq!(clip_result.start_time, 5.0);
+        assert_eq!(clip_result.end_time, 7.0);
+        assert!(clip_result.error.is_none());
+        assert!(output_path.exists(), "Output clip should exist");
+    }
+
+    #[tokio::test]
+    async fn test_save_clip_with_corrupted_video() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let video_path = temp_dir.path().join("corrupted_video.mp4");
+        let output_path = temp_dir.path().join("output_clip.mp4");
+
+        // Create a corrupted video file (just write some random bytes)
+        std::fs::write(&video_path, b"This is not a valid video file").unwrap();
+
+        let clipper = Clipper::new(2.0, 2.0);
+
+        // Try to save a clip from the corrupted video
+        let result = clipper.save_clip(&video_path, 1.0, 3.0, &output_path).await;
+
+        // Should fail because the video is corrupted
+        assert!(result.is_err(), "Should fail for corrupted video");
+    }
+
+    #[tokio::test]
+    async fn test_save_clip_with_nonexistent_video() {
+        let clipper = Clipper::new(2.0, 2.0);
+
+        // Try to save a clip from a non-existent video
+        let result = clipper.save_clip(
+            Path::new("/nonexistent/video.mp4"),
+            1.0,
+            3.0,
+            Path::new("/tmp/output.mp4"),
+        ).await;
+
+        // Should fail because the video doesn't exist
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_output_path_with_special_characters_in_filename() {
+        use tempfile::TempDir;
+
+        let clipper = Clipper::new(5.0, 5.0);
+        let temp_dir = TempDir::new().unwrap();
+
+        // Test with special characters in filename
+        let video_path = temp_dir.path().join("my video (2024) [HD].mp4");
+        let result = clipper.output_path(&video_path, 1, None);
+
+        assert!(result.is_ok());
+        let output_path = result.unwrap();
+        assert!(output_path.to_str().unwrap().contains("my video (2024) [HD]"));
+    }
+
+    #[test]
+    fn test_output_path_with_unicode_filename() {
+        use tempfile::TempDir;
+
+        let clipper = Clipper::new(5.0, 5.0);
+        let temp_dir = TempDir::new().unwrap();
+
+        // Test with unicode characters in filename
+        let video_path = temp_dir.path().join("视频文件.mp4");
+        let result = clipper.output_path(&video_path, 1, None);
+
+        assert!(result.is_ok());
+        let output_path = result.unwrap();
+        assert!(output_path.to_str().unwrap().contains("视频文件"));
+    }
+
+    #[test]
+    fn test_output_path_with_different_clip_numbers() {
+        use tempfile::TempDir;
+
+        let clipper = Clipper::new(5.0, 5.0);
+        let temp_dir = TempDir::new().unwrap();
+        let video_path = temp_dir.path().join("video.mp4");
+
+        // Test with different clip numbers
+        for i in 1..=5 {
+            let result = clipper.output_path(&video_path, i, None);
+            assert!(result.is_ok());
+            let output_path = result.unwrap();
+            // Clip numbers are zero-padded to 5 digits
+            assert!(output_path.to_str().unwrap().contains(&format!("clip_{:05}", i)));
+        }
+    }
+
+    #[test]
+    fn test_clipper_new_with_zero_buffers() {
+        let clipper = Clipper::new(0.0, 0.0);
+        assert_eq!(clipper.buffer_before, 0.0);
+        assert_eq!(clipper.buffer_after, 0.0);
+    }
+
+    #[test]
+    fn test_clipper_new_with_large_buffers() {
+        let clipper = Clipper::new(120.0, 120.0);
+        assert_eq!(clipper.buffer_before, 120.0);
+        assert_eq!(clipper.buffer_after, 120.0);
+    }
 }

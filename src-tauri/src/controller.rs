@@ -148,3 +148,414 @@ impl Controller {
         self.store.delete_clip(id)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn create_test_controller() -> (Controller, TempDir) {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Create a unique database for this test
+        let db_path = temp_dir.path().join("test_clips.db");
+        let store = ClipStore::with_path(&db_path).unwrap();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let controller = Controller {
+            clipper: Clipper::new(5.0, 5.0),
+            settings: settings.clone(),
+            store,
+            current_video: None,
+            clip_count: 0,
+            is_clipping: false,
+            clips_dir: temp_dir.path().join("clips"),
+        };
+
+        (controller, temp_dir)
+    }
+
+    #[test]
+    fn test_update_settings_valid_buffers() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let new_settings = Settings {
+            buffer_before: 10.0,
+            buffer_after: 15.0,
+            clip_key: "x".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(new_settings.clone());
+        assert!(result.is_ok());
+        assert_eq!(controller.settings.buffer_before, 10.0);
+        assert_eq!(controller.settings.buffer_after, 15.0);
+        assert_eq!(controller.settings.clip_key, "x");
+    }
+
+    #[test]
+    fn test_update_settings_invalid_buffer_before() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: -1.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Buffer before"));
+
+        let settings = Settings {
+            buffer_before: 61.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Buffer before"));
+    }
+
+    #[test]
+    fn test_update_settings_invalid_buffer_after() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: -5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Buffer after"));
+    }
+
+    #[test]
+    fn test_update_settings_invalid_clip_key_empty() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("single character"));
+    }
+
+    #[test]
+    fn test_update_settings_invalid_clip_key_multiple_chars() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "ab".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: None,
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("single character"));
+    }
+
+    #[test]
+    fn test_update_settings_output_dir_nonexistent() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: Some(PathBuf::from("/nonexistent/directory")),
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not exist"));
+    }
+
+    #[test]
+    fn test_update_settings_output_dir_valid() {
+        let (mut controller, temp_dir) = create_test_controller();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: Some(temp_dir.path().to_path_buf()),
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_update_settings_output_dir_not_a_directory() {
+        let (mut controller, temp_dir) = create_test_controller();
+
+        // Create a file (not a directory)
+        let file_path = temp_dir.path().join("not_a_dir.txt");
+        std::fs::write(&file_path, "content").unwrap();
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: Some(file_path),
+        };
+
+        let result = controller.update_settings(settings);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("not a directory"));
+    }
+
+    #[test]
+    fn test_update_settings_output_dir_not_writable() {
+        let (mut controller, temp_dir) = create_test_controller();
+
+        // Create a directory without write permissions
+        let readonly_dir = temp_dir.path().join("readonly");
+        std::fs::create_dir(&readonly_dir).unwrap();
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o555);
+            std::fs::set_permissions(&readonly_dir, perms).unwrap();
+        }
+
+        let settings = Settings {
+            buffer_before: 5.0,
+            buffer_after: 5.0,
+            clip_key: "c".to_string(),
+            theme: crate::settings::Theme::Dark,
+            output_dir: Some(readonly_dir.clone()),
+        };
+
+        let result = controller.update_settings(settings);
+
+        // Restore permissions for cleanup
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o755);
+            std::fs::set_permissions(&readonly_dir, perms).unwrap();
+        }
+
+        #[cfg(unix)]
+        {
+            assert!(result.is_err());
+            assert!(result.unwrap_err().to_string().contains("not writable"));
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On non-Unix, just ensure it doesn't panic
+            let _ = result;
+        }
+    }
+
+    #[test]
+    fn test_get_clips_no_video_loaded() {
+        let (mut controller, _temp_dir) = create_test_controller();
+
+        let clips = controller.get_clips().unwrap();
+        assert_eq!(clips.len(), 0);
+    }
+
+    #[test]
+    fn test_delete_clip_removes_file_and_db_entry() {
+        let (controller, temp_dir) = create_test_controller();
+
+        // Create a test clip file
+        let clip_file = temp_dir.path().join("test_clip.mp4");
+        std::fs::write(&clip_file, "fake video data").unwrap();
+        assert!(clip_file.exists());
+
+        // Add clip to database
+        let video_path = "/test/video.mp4";
+        controller.store.add_clip(
+            video_path,
+            clip_file.to_str().unwrap(),
+            10.0,
+            20.0,
+        ).unwrap();
+
+        // Get the clip ID
+        let clips = controller.store.get_clips_for_video(video_path).unwrap();
+        assert_eq!(clips.len(), 1);
+        let clip_id = clips[0].id;
+
+        // Delete the clip
+        controller.delete_clip(clip_id, clip_file.to_str().unwrap()).unwrap();
+
+        // File should be removed
+        assert!(!clip_file.exists());
+
+        // DB entry should be removed
+        let remaining = controller.store.get_clips_for_video(video_path).unwrap();
+        assert_eq!(remaining.len(), 0);
+    }
+
+    #[test]
+    fn test_delete_clip_handles_missing_file() {
+        let (controller, _temp_dir) = create_test_controller();
+
+        // Add clip with nonexistent file path
+        let video_path = "/test/video.mp4";
+        controller.store.add_clip(
+            video_path,
+            "/nonexistent/clip.mp4",
+            10.0,
+            20.0,
+        ).unwrap();
+
+        let clips = controller.store.get_clips_for_video(video_path).unwrap();
+        let clip_id = clips[0].id;
+
+        // Delete should succeed even if file doesn't exist
+        let result = controller.delete_clip(clip_id, "/nonexistent/clip.mp4");
+        assert!(result.is_ok());
+
+        // DB entry should be removed
+        let remaining = controller.store.get_clips_for_video(video_path).unwrap();
+        assert_eq!(remaining.len(), 0);
+    }
+
+    #[test]
+    fn test_get_clips_with_video_loaded() {
+        let (mut controller, temp_dir) = create_test_controller();
+
+        // Create test video and clip files
+        let video_file = temp_dir.path().join("test_video.mp4");
+        let clip1_file = temp_dir.path().join("clip1.mp4");
+        let clip2_file = temp_dir.path().join("clip2.mp4");
+
+        std::fs::write(&video_file, "fake video").unwrap();
+        std::fs::write(&clip1_file, "clip1 data").unwrap();
+        std::fs::write(&clip2_file, "clip2 data").unwrap();
+
+        // Set current video
+        controller.current_video = Some(video_file.clone());
+
+        // Add clips to database
+        controller.store.add_clip(
+            video_file.to_str().unwrap(),
+            clip1_file.to_str().unwrap(),
+            10.0,
+            20.0,
+        ).unwrap();
+
+        controller.store.add_clip(
+            video_file.to_str().unwrap(),
+            clip2_file.to_str().unwrap(),
+            30.0,
+            40.0,
+        ).unwrap();
+
+        // Get clips should return both
+        let clips = controller.get_clips().unwrap();
+        assert_eq!(clips.len(), 2);
+        assert_eq!(controller.clip_count, 2);
+    }
+
+    #[test]
+    fn test_get_clips_filters_missing_files() {
+        let (mut controller, temp_dir) = create_test_controller();
+
+        // Create test video
+        let video_file = temp_dir.path().join("test_video.mp4");
+        std::fs::write(&video_file, "fake video").unwrap();
+
+        // Create only one clip file
+        let clip1_file = temp_dir.path().join("clip1.mp4");
+        std::fs::write(&clip1_file, "clip1 data").unwrap();
+
+        // Second clip file doesn't exist
+        let clip2_file = temp_dir.path().join("clip2_missing.mp4");
+
+        // Set current video
+        controller.current_video = Some(video_file.clone());
+
+        // Add both clips to database
+        controller.store.add_clip(
+            video_file.to_str().unwrap(),
+            clip1_file.to_str().unwrap(),
+            10.0,
+            20.0,
+        ).unwrap();
+
+        controller.store.add_clip(
+            video_file.to_str().unwrap(),
+            clip2_file.to_str().unwrap(),
+            30.0,
+            40.0,
+        ).unwrap();
+
+        // Get clips should only return the one with existing file
+        let clips = controller.get_clips().unwrap();
+        assert_eq!(clips.len(), 1);
+        assert_eq!(clips[0].clip_path, clip1_file.to_str().unwrap());
+        assert_eq!(controller.clip_count, 1);
+
+        // Missing clip should be removed from database
+        let remaining = controller.store.get_clips_for_video(video_file.to_str().unwrap()).unwrap();
+        assert_eq!(remaining.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_controller_new_creates_clips_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Set a custom config directory for this test
+        std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
+
+        let controller = Controller::new().await.unwrap();
+
+        // Controller should be created successfully
+        assert_eq!(controller.clip_count, 0);
+        assert!(!controller.is_clipping);
+        assert!(controller.current_video.is_none());
+
+        // Clips directory should exist
+        assert!(controller.clips_dir.exists());
+        assert!(controller.clips_dir.is_dir());
+    }
+
+    #[test]
+    fn test_controller_default_state() {
+        let (controller, _temp_dir) = create_test_controller();
+
+        assert_eq!(controller.clip_count, 0);
+        assert!(!controller.is_clipping);
+        assert!(controller.current_video.is_none());
+        assert_eq!(controller.settings.buffer_before, 5.0);
+        assert_eq!(controller.settings.buffer_after, 5.0);
+    }
+}

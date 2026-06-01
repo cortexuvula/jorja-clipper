@@ -132,7 +132,12 @@ fn handle_request(
 
     // Handle empty files
     if file_size == 0 {
-        let response = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: 14\r\nConnection: close\r\n\r\nEmpty file";
+        let body = "Empty file";
+        let response = format!(
+            "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
         stream.write_all(response.as_bytes())?;
         return Ok(());
     }
@@ -225,4 +230,302 @@ fn handle_request(
     stream.flush()?;
     println!("[video-server] {} {} ({}-{}) {} bytes", method, status_code, start, end, content_length);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpStream;
+    use tempfile::NamedTempFile;
+
+    fn send_request(port: u16, request: &str) -> (String, Vec<u8>) {
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        stream.flush().unwrap();
+
+        let mut reader = BufReader::new(&stream);
+
+        // Read status line
+        let mut status_line = String::new();
+        reader.read_line(&mut status_line).unwrap();
+
+        // Read headers
+        let mut content_length = 0;
+        loop {
+            let mut line = String::new();
+            reader.read_line(&mut line).unwrap();
+            if line.trim().is_empty() {
+                break;
+            }
+            if line.to_lowercase().starts_with("content-length:") {
+                content_length = line.split(':').nth(1).unwrap().trim().parse().unwrap_or(0);
+            }
+        }
+
+        // For HEAD requests, no body is sent even if content-length is set
+        if request.starts_with("HEAD") {
+            return (status_line.trim().to_string(), Vec::new());
+        }
+
+        // Read body - use read_to_end for robustness
+        let mut body = Vec::new();
+        if content_length > 0 {
+            body.resize(content_length, 0);
+            let _ = reader.read_exact(&mut body);
+        }
+
+        (status_line.trim().to_string(), body)
+    }
+
+    #[test]
+    fn test_video_server_start_and_serve() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test video content").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        assert!(port > 0);
+
+        // Test GET request
+        let (status, body) = send_request(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(status.contains("200"));
+        assert_eq!(body, b"test video content");
+    }
+
+    #[test]
+    fn test_video_server_range_request() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"0123456789ABCDEF").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Test range request (bytes 5-9)
+        let (status, body) = send_request(
+            port,
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-9\r\n\r\n"
+        );
+
+        assert!(status.contains("206"));
+        assert_eq!(body, b"56789");
+    }
+
+    #[test]
+    fn test_video_server_head_request() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test content").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Test HEAD request (should return headers but no body)
+        let (status, body) = send_request(port, "HEAD / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+
+        assert!(status.contains("200"));
+        assert_eq!(body.len(), 0); // HEAD should have no body
+    }
+
+    #[test]
+    fn test_video_server_file_not_found() {
+        let mut server = VideoServer::new();
+
+        // Start with a path that doesn't exist
+        let fake_path = PathBuf::from("/nonexistent/video.mp4");
+        let port = server.start(fake_path).unwrap();
+
+        let (status, body) = send_request(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(status.contains("404"));
+        assert!(String::from_utf8_lossy(&body).contains("not found"));
+    }
+
+    #[test]
+    fn test_video_server_empty_file() {
+        let temp_file = NamedTempFile::new().unwrap();
+        // Don't write anything - file is empty
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        let (status, _) = send_request(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(status.contains("400"));
+    }
+
+    #[test]
+    fn test_video_server_reuse_port() {
+        let temp_file1 = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file1.path(), b"video1").unwrap();
+
+        let temp_file2 = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file2.path(), b"video2").unwrap();
+
+        let mut server = VideoServer::new();
+        let port1 = server.start(temp_file1.path().to_path_buf()).unwrap();
+
+        // Start again with different file - should reuse port
+        let port2 = server.start(temp_file2.path().to_path_buf()).unwrap();
+        assert_eq!(port1, port2);
+
+        // Should now serve the second file
+        let (status, body) = send_request(port2, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(status.contains("200"));
+        assert_eq!(body, b"video2");
+    }
+
+    #[test]
+    fn test_video_server_method_not_allowed() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        let (status, _) = send_request(port, "POST / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+        assert!(status.contains("405"));
+    }
+
+    #[test]
+    fn test_video_server_invalid_request_line() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Send malformed request (no path)
+        let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        stream.write_all(b"INVALID\r\n\r\n").unwrap();
+        stream.flush().unwrap();
+
+        // Server should handle gracefully (connection closes)
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_video_server_different_mime_types() {
+        let temp_dir = tempfile::tempdir().unwrap();
+
+        // Test various video formats
+        let formats = vec![
+            ("video.mp4", "video/mp4"),
+            ("video.m4v", "video/mp4"),
+            ("video.webm", "video/webm"),
+            ("video.ogg", "video/ogg"),
+            ("video.ogv", "video/ogg"),
+            ("video.mkv", "video/x-matroska"),
+            ("video.avi", "video/x-msvideo"),
+            ("video.mov", "video/quicktime"),
+            ("video.ts", "video/mp2t"),
+            ("video.xyz", "application/octet-stream"),
+        ];
+
+        for (filename, _expected_mime) in formats {
+            let video_file = temp_dir.path().join(filename);
+            std::fs::write(&video_file, b"test video").unwrap();
+
+            let mut server = VideoServer::new();
+            let port = server.start(video_file).unwrap();
+
+            let (status, body) = send_request(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
+            assert!(status.contains("200"), "Failed for {}", filename);
+            assert_eq!(body, b"test video");
+        }
+    }
+
+    #[test]
+    fn test_video_server_range_request_open_ended() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"0123456789ABCDEF").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Test open-ended range (bytes=5-)
+        let (status, body) = send_request(
+            port,
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-\r\n\r\n"
+        );
+
+        assert!(status.contains("206"));
+        assert_eq!(body, b"56789ABCDEF");
+    }
+
+    #[test]
+    fn test_video_server_invalid_range_header() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"0123456789ABCDEF").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Test invalid range header (not starting with "bytes=")
+        let (status, body) = send_request(
+            port,
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: items=0-4\r\n\r\n"
+        );
+
+        // Should return 200 OK (not 206) because the range header is invalid
+        assert!(status.contains("200"));
+        assert_eq!(body, b"0123456789ABCDEF");
+    }
+
+    #[test]
+    fn test_video_server_multiple_requests() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test content").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Make multiple requests to the same server
+        for _ in 0..3 {
+            let (status, body) = send_request(
+                port,
+                "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
+            );
+
+            assert!(status.contains("200"));
+            assert_eq!(body, b"test content");
+        }
+    }
+
+    #[test]
+    fn test_video_server_large_file() {
+        let temp_file = NamedTempFile::new().unwrap();
+
+        // Create a large file (1MB)
+        let large_content = vec![b'x'; 1024 * 1024];
+        std::fs::write(temp_file.path(), &large_content).unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Request a range from the large file
+        let (status, body) = send_request(
+            port,
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-999\r\n\r\n"
+        );
+
+        assert!(status.contains("206"));
+        assert_eq!(body.len(), 1000);
+    }
+
+    #[test]
+    fn test_video_server_delete_request() {
+        let temp_file = NamedTempFile::new().unwrap();
+        std::fs::write(temp_file.path(), b"test").unwrap();
+
+        let mut server = VideoServer::new();
+        let port = server.start(temp_file.path().to_path_buf()).unwrap();
+
+        // Send a DELETE request (unsupported method)
+        let (status, _) = send_request(
+            port,
+            "DELETE / HTTP/1.1\r\nHost: localhost\r\n\r\n"
+        );
+
+        // Should return 405 Method Not Allowed
+        assert!(status.contains("405"));
+    }
 }

@@ -6,6 +6,10 @@
     "core:default",
     "shell:allow-open",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    {
+      "identifier": "fs:allow-stat",
+      "allow": [{ "path": "**" }]
+    }
   ]
 }

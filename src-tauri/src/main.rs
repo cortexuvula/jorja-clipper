@@ -1,19 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod cleanup;
-mod clipper;
-mod commands;
-mod controller;
-mod converter;
-mod error;
-mod settings;
-mod storage;
-mod util;
-mod video_server;
-
 use std::sync::Arc;
 
 use tokio::sync::Mutex;
+
+use jorja_clipper::{cleanup, commands, controller, util, video_server};
 
 #[tokio::main]
 async fn main() {
