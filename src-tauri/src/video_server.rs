@@ -10,6 +10,12 @@ pub struct VideoServer {
     video_path: Arc<Mutex<Option<PathBuf>>>,
 }
 
+impl Default for VideoServer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VideoServer {
     pub fn new() -> Self {
         Self {

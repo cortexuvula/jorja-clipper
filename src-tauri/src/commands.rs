@@ -118,7 +118,7 @@ pub async fn open_video_logic(
 
         // Spawn a task to drain the channel (prevent blocking)
         tokio::spawn(async move {
-            while let Some(_) = progress_rx.recv().await {
+            while progress_rx.recv().await.is_some() {
                 // Just drain the channel
             }
         });
@@ -167,7 +167,7 @@ pub async fn open_video(
     let path = PathBuf::from(&path);
 
     // Create channel for conversion progress
-    let (progress_tx, mut progress_rx) = mpsc::channel::<ConversionStatus>(100);
+    let (_progress_tx, mut progress_rx) = mpsc::channel::<ConversionStatus>(100);
 
     // Spawn task to forward progress to frontend
     let app_clone = app.clone();
@@ -209,7 +209,6 @@ pub async fn open_video(
 /// 3. Update state (re-acquire lock to update storage)
 ///
 /// A RAII guard ensures `is_clipping` is always reset, even on early returns.
-
 /// Core logic for saving a clip, separated from Tauri wrapper for testability
 pub async fn save_clip_logic(
     controller: Arc<Mutex<Controller>>,
@@ -239,9 +238,8 @@ pub async fn save_clip_logic(
         let (start, end) = guard.ctrl.clipper.calculate_times(current_pos, duration);
 
         // Validate clip has positive duration
-        if let Err(e) = Clipper::validate_times(start, end) {
-            return Err(e); // guard drops, resets is_clipping
-        }
+        // guard drops and resets is_clipping on early return
+        Clipper::validate_times(start, end)?;
 
         let clip_number = guard.ctrl.clip_count + 1;
         let output = match guard.ctrl.clipper.output_path(
