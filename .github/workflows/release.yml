@@ -78,11 +78,22 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
+      - name: Import Apple code signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_CERTIFICATE_P12_PASSWORD }}
+
       - name: Download FFmpeg sidecar binaries
         run: ./setup-ffmpeg.sh
 
       - name: Build app bundle
         run: npx tauri build --target universal-apple-darwin
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.MACOS_NOTARY_APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.MACOS_NOTARY_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.MACOS_NOTARY_TEAM_ID }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
