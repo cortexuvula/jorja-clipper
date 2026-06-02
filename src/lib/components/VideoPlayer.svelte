@@ -181,6 +181,13 @@
     >
       <track kind="captions" />
     </video>
+    {#if paused}
+      <button class="play-button" onclick={togglePlayPause} aria-label="Play">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+          <polygon points="5 3 19 12 5 21 5 3"></polygon>
+        </svg>
+      </button>
+    {/if}
   {:else}
     <div class="placeholder">
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -292,5 +299,32 @@
   .hint {
     font-size: 0.875rem;
     opacity: 0.7;
+  }
+
+  .play-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.6);
+    border: none;
+    border-radius: 50%;
+    width: 80px;
+    height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #fff;
+    transition: background 0.2s ease;
+    z-index: 5;
+  }
+
+  .play-button:hover {
+    background: rgba(0, 0, 0, 0.8);
+  }
+
+  .play-button svg {
+    margin-left: 4px;
   }
 </style>

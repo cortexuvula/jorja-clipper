@@ -37,3 +37,6 @@ clips/
 .env
 .env.local
 .claude/
+
+# Legacy code
+src/jorja_clipper/

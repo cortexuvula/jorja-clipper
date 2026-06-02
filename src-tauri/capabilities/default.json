@@ -6,6 +6,7 @@
     "core:default",
     "shell:allow-open",
     "dialog:default",
+    "dialog:allow-confirm",
     "fs:default",
     {
       "identifier": "fs:allow-stat",

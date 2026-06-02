@@ -38,16 +38,23 @@
     theme: 'dark'
   });
 
-  // Fallback for older WebView2 versions that don't support structuredClone
   function cloneSettings<T>(obj: T): T {
-    return typeof structuredClone === 'function'
-      ? structuredClone(obj)
-      : JSON.parse(JSON.stringify(obj));
+    try {
+      if (typeof structuredClone === 'function') {
+        return structuredClone(obj);
+      }
+    } catch {
+      // structuredClone may throw on some WebView2 versions
+    }
+    return JSON.parse(JSON.stringify(obj));
   }
 
   function openSettings() {
-    // Save current settings so we can revert on cancel
-    savedSettings = cloneSettings(settings);
+    try {
+      savedSettings = cloneSettings(settings);
+    } catch (e) {
+      console.error('Failed to clone settings:', e);
+    }
     settingsOpen = true;
   }
 
@@ -223,24 +230,27 @@
       </ul>
     {/if}
   </div>
+
+  {#if toastMessage}
+    <div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
+      {toastMessage}
+    </div>
+  {/if}
+
+  <SettingsDialog
+    bind:open={settingsOpen}
+    bind:settings={settings}
+    onsave={saveSettings}
+    oncancel={() => {
+      try {
+        settings = cloneSettings(savedSettings);
+      } catch {
+        // revert failed, keep current settings
+      }
+      settingsOpen = false;
+    }}
+  />
 </div>
-
-{#if toastMessage}
-  <div class="toast" class:toast-success={toastType === 'success'} class:toast-error={toastType === 'error'}>
-    {toastMessage}
-  </div>
-{/if}
-
-<SettingsDialog
-  bind:open={settingsOpen}
-  bind:settings={settings}
-  onsave={saveSettings}
-  oncancel={() => {
-    // Revert to saved settings on cancel
-    settings = cloneSettings(savedSettings);
-    settingsOpen = false;
-  }}
-/>
 
 <style>
   :global(body) {
@@ -260,6 +270,7 @@
     --border: #0f3460;
     --danger: #9b2226;
     --danger-text: #fec89a;
+    color-scheme: dark;
   }
 
   /* Light theme */
@@ -273,6 +284,7 @@
     --border: #c0c0c0;
     --danger: #ae2012;
     --danger-text: #fec89a;
+    color-scheme: light;
   }
 
   .main-layout {
@@ -307,6 +319,7 @@
     display: flex;
     gap: 0.5rem;
     flex-shrink: 0;
+    padding-left: 0.5rem;
   }
 
   button {
