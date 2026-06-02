@@ -90,10 +90,15 @@ mod clipping_guard_tests {
     }
 }
 
-/// Core logic for opening a video, separated from Tauri event emission
+/// Core logic for opening a video, separated from Tauri event emission.
+///
+/// The caller provides a `progress_tx` channel so conversion progress events
+/// are forwarded to whichever consumer wires them up (e.g. Tauri events in
+/// the `open_video` command, or a drained channel in tests).
 pub async fn open_video_logic(
     controller: Arc<Mutex<Controller>>,
     path: PathBuf,
+    progress_tx: mpsc::Sender<ConversionStatus>,
 ) -> Result<OpenVideoResponse, String> {
     // Check file exists before any work
     if !path.exists() {
@@ -113,16 +118,6 @@ pub async fn open_video_logic(
     let (play_path, converted) = if !needs_conversion {
         (path.clone(), false)
     } else {
-        // Create channel for conversion progress (not used in logic, but needed for API)
-        let (progress_tx, mut progress_rx) = mpsc::channel::<ConversionStatus>(100);
-
-        // Spawn a task to drain the channel (prevent blocking)
-        tokio::spawn(async move {
-            while progress_rx.recv().await.is_some() {
-                // Just drain the channel
-            }
-        });
-
         let converted_path = tokio::time::timeout(
             Duration::from_secs(4 * 60 * 60), // 4 hour max
             Converter::convert_to_mp4(&path, &clips_dir, progress_tx),
@@ -167,9 +162,9 @@ pub async fn open_video(
     let path = PathBuf::from(&path);
 
     // Create channel for conversion progress
-    let (_progress_tx, mut progress_rx) = mpsc::channel::<ConversionStatus>(100);
+    let (progress_tx, mut progress_rx) = mpsc::channel::<ConversionStatus>(100);
 
-    // Spawn task to forward progress to frontend
+    // Spawn task to forward progress to frontend via Tauri events
     let app_clone = app.clone();
     tokio::spawn(async move {
         while let Some(status) = progress_rx.recv().await {
@@ -196,8 +191,8 @@ pub async fn open_video(
         }
     });
 
-    // Call the core logic
-    open_video_logic(state.inner().clone(), path).await
+    // Call the core logic, passing the progress sender so events reach the frontend
+    open_video_logic(state.inner().clone(), path, progress_tx).await
 }
 
 /// Save a clip at the specified position.
@@ -422,6 +417,11 @@ mod tests {
         )
     }
 
+    fn dummy_progress_tx() -> mpsc::Sender<ConversionStatus> {
+        let (tx, _rx) = mpsc::channel(100);
+        tx
+    }
+
     #[tokio::test]
     async fn test_get_settings_logic() {
         let (controller, _temp_dir) = create_test_controller();
@@ -595,7 +595,12 @@ mod tests {
     async fn test_open_video_logic_file_not_found() {
         let (controller, _temp_dir) = create_test_controller();
 
-        let result = open_video_logic(controller, PathBuf::from("/nonexistent/video.mp4")).await;
+        let result = open_video_logic(
+            controller,
+            PathBuf::from("/nonexistent/video.mp4"),
+            dummy_progress_tx(),
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
@@ -632,7 +637,8 @@ mod tests {
             panic!("Failed to create test video");
         }
 
-        let result = open_video_logic(controller.clone(), video_path.clone()).await;
+        let result =
+            open_video_logic(controller.clone(), video_path.clone(), dummy_progress_tx()).await;
 
         assert!(result.is_ok(), "Should succeed: {:?}", result.err());
         let response = result.unwrap();
@@ -680,7 +686,8 @@ mod tests {
             panic!("Failed to create test video");
         }
 
-        let result = open_video_logic(controller.clone(), video_path.clone()).await;
+        let result =
+            open_video_logic(controller.clone(), video_path.clone(), dummy_progress_tx()).await;
 
         assert!(result.is_ok(), "Should succeed: {:?}", result.err());
         let response = result.unwrap();
@@ -1007,7 +1014,8 @@ mod tests {
             panic!("Failed to create WebM test video");
         }
 
-        let result = open_video_logic(controller.clone(), video_path.clone()).await;
+        let result =
+            open_video_logic(controller.clone(), video_path.clone(), dummy_progress_tx()).await;
 
         // Should succeed (WebM is web-compatible)
         assert!(result.is_ok(), "Should succeed: {:?}", result.err());
