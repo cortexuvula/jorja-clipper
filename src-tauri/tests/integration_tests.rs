@@ -1,13 +1,10 @@
 use jorja_clipper::{
-    commands,
-    controller::Controller,
-    storage::ClipStore,
-    video_server::VideoServer,
+    commands, controller::Controller, storage::ClipStore, video_server::VideoServer,
 };
 use std::sync::Arc;
+use tauri::Manager;
 use tempfile::TempDir;
 use tokio::sync::Mutex;
-use tauri::Manager;
 
 // Helper to create a test controller without full Tauri app
 async fn create_test_controller() -> (Arc<Mutex<Controller>>, TempDir) {

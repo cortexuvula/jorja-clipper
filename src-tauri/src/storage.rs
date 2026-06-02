@@ -279,7 +279,14 @@ mod tests {
         let video_path = "/test/video.mp4";
         for i in 0..5 {
             let clip_path = format!("/test/clip{}.mp4", i);
-            store.add_clip(video_path, &clip_path, i as f64 * 10.0, i as f64 * 10.0 + 5.0).unwrap();
+            store
+                .add_clip(
+                    video_path,
+                    &clip_path,
+                    i as f64 * 10.0,
+                    i as f64 * 10.0 + 5.0,
+                )
+                .unwrap();
         }
 
         let clips = store.get_clips_for_video(video_path).unwrap();
@@ -340,7 +347,9 @@ mod tests {
             let store_clone = Arc::clone(&store);
             let handle = thread::spawn(move || {
                 let clip_path = format!("/test/clip{}.mp4", i);
-                store_clone.add_clip("/test/video.mp4", &clip_path, i as f64, i as f64 + 1.0).unwrap();
+                store_clone
+                    .add_clip("/test/video.mp4", &clip_path, i as f64, i as f64 + 1.0)
+                    .unwrap();
             });
             handles.push(handle);
         }
@@ -377,7 +386,8 @@ mod tests {
                     10.0,
                     "invalid-datetime-format",
                 ],
-            ).unwrap();
+            )
+            .unwrap();
         }
 
         // Try to retrieve clips - should handle the invalid datetime gracefully
@@ -440,7 +450,9 @@ mod tests {
         let start_time = 10.5;
         let end_time = 20.3;
 
-        let clip = store.add_clip(video_path, clip_path, start_time, end_time).unwrap();
+        let clip = store
+            .add_clip(video_path, clip_path, start_time, end_time)
+            .unwrap();
 
         // Verify the returned clip has the correct values
         assert_eq!(clip.video_path, video_path);

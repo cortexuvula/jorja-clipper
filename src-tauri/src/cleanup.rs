@@ -35,7 +35,8 @@ async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
             continue;
         }
 
-        let is_converted = path.to_str()
+        let is_converted = path
+            .to_str()
             .map(|s| s.ends_with(".converted.mp4"))
             .unwrap_or(false);
 
@@ -47,7 +48,11 @@ async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
         let metadata = match tokio::fs::metadata(&path).await {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("[cleanup] Failed to read metadata for {}: {}", path.display(), e);
+                eprintln!(
+                    "[cleanup] Failed to read metadata for {}: {}",
+                    path.display(),
+                    e
+                );
                 continue;
             }
         };
@@ -55,7 +60,11 @@ async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
         let modified = match metadata.modified() {
             Ok(m) => m,
             Err(e) => {
-                eprintln!("[cleanup] Failed to get modified time for {}: {}", path.display(), e);
+                eprintln!(
+                    "[cleanup] Failed to get modified time for {}: {}",
+                    path.display(),
+                    e
+                );
                 continue;
             }
         };
@@ -134,7 +143,11 @@ mod tests {
 
         // All files should still exist
         for filename in &files {
-            assert!(clips_dir.join(filename).exists(), "{} should not be deleted", filename);
+            assert!(
+                clips_dir.join(filename).exists(),
+                "{} should not be deleted",
+                filename
+            );
         }
     }
 
@@ -162,12 +175,18 @@ mod tests {
 
         // Set modified times
         let now = SystemTime::now();
-        fs::File::open(&file_5_days).unwrap()
-            .set_modified(now - Duration::from_secs(5 * 24 * 60 * 60)).unwrap();
-        fs::File::open(&file_10_days).unwrap()
-            .set_modified(now - Duration::from_secs(10 * 24 * 60 * 60)).unwrap();
-        fs::File::open(&file_20_days).unwrap()
-            .set_modified(now - Duration::from_secs(20 * 24 * 60 * 60)).unwrap();
+        fs::File::open(&file_5_days)
+            .unwrap()
+            .set_modified(now - Duration::from_secs(5 * 24 * 60 * 60))
+            .unwrap();
+        fs::File::open(&file_10_days)
+            .unwrap()
+            .set_modified(now - Duration::from_secs(10 * 24 * 60 * 60))
+            .unwrap();
+        fs::File::open(&file_20_days)
+            .unwrap()
+            .set_modified(now - Duration::from_secs(20 * 24 * 60 * 60))
+            .unwrap();
 
         // Cleanup with 7-day threshold
         cleanup_old_files(&clips_dir, 7).await;

@@ -113,9 +113,9 @@ impl Controller {
     /// clips whose files have been deleted or moved and updates clip_count.
     pub fn get_clips(&mut self) -> AppResult<Vec<Clip>> {
         if let Some(video_path) = &self.current_video {
-            let video_path_str = video_path
-                .to_str()
-                .ok_or_else(|| AppError::Clip("Video path contains non-UTF8 characters".to_string()))?;
+            let video_path_str = video_path.to_str().ok_or_else(|| {
+                AppError::Clip("Video path contains non-UTF8 characters".to_string())
+            })?;
             let clips = self.store.get_clips_for_video(video_path_str)?;
 
             // Filter out clips whose files no longer exist on disk
@@ -400,12 +400,10 @@ mod tests {
 
         // Add clip to database
         let video_path = "/test/video.mp4";
-        controller.store.add_clip(
-            video_path,
-            clip_file.to_str().unwrap(),
-            10.0,
-            20.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(video_path, clip_file.to_str().unwrap(), 10.0, 20.0)
+            .unwrap();
 
         // Get the clip ID
         let clips = controller.store.get_clips_for_video(video_path).unwrap();
@@ -413,7 +411,9 @@ mod tests {
         let clip_id = clips[0].id;
 
         // Delete the clip
-        controller.delete_clip(clip_id, clip_file.to_str().unwrap()).unwrap();
+        controller
+            .delete_clip(clip_id, clip_file.to_str().unwrap())
+            .unwrap();
 
         // File should be removed
         assert!(!clip_file.exists());
@@ -429,12 +429,10 @@ mod tests {
 
         // Add clip with nonexistent file path
         let video_path = "/test/video.mp4";
-        controller.store.add_clip(
-            video_path,
-            "/nonexistent/clip.mp4",
-            10.0,
-            20.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(video_path, "/nonexistent/clip.mp4", 10.0, 20.0)
+            .unwrap();
 
         let clips = controller.store.get_clips_for_video(video_path).unwrap();
         let clip_id = clips[0].id;
@@ -465,19 +463,25 @@ mod tests {
         controller.current_video = Some(video_file.clone());
 
         // Add clips to database
-        controller.store.add_clip(
-            video_file.to_str().unwrap(),
-            clip1_file.to_str().unwrap(),
-            10.0,
-            20.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(
+                video_file.to_str().unwrap(),
+                clip1_file.to_str().unwrap(),
+                10.0,
+                20.0,
+            )
+            .unwrap();
 
-        controller.store.add_clip(
-            video_file.to_str().unwrap(),
-            clip2_file.to_str().unwrap(),
-            30.0,
-            40.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(
+                video_file.to_str().unwrap(),
+                clip2_file.to_str().unwrap(),
+                30.0,
+                40.0,
+            )
+            .unwrap();
 
         // Get clips should return both
         let clips = controller.get_clips().unwrap();
@@ -504,19 +508,25 @@ mod tests {
         controller.current_video = Some(video_file.clone());
 
         // Add both clips to database
-        controller.store.add_clip(
-            video_file.to_str().unwrap(),
-            clip1_file.to_str().unwrap(),
-            10.0,
-            20.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(
+                video_file.to_str().unwrap(),
+                clip1_file.to_str().unwrap(),
+                10.0,
+                20.0,
+            )
+            .unwrap();
 
-        controller.store.add_clip(
-            video_file.to_str().unwrap(),
-            clip2_file.to_str().unwrap(),
-            30.0,
-            40.0,
-        ).unwrap();
+        controller
+            .store
+            .add_clip(
+                video_file.to_str().unwrap(),
+                clip2_file.to_str().unwrap(),
+                30.0,
+                40.0,
+            )
+            .unwrap();
 
         // Get clips should only return the one with existing file
         let clips = controller.get_clips().unwrap();
@@ -525,7 +535,10 @@ mod tests {
         assert_eq!(controller.clip_count, 1);
 
         // Missing clip should be removed from database
-        let remaining = controller.store.get_clips_for_video(video_file.to_str().unwrap()).unwrap();
+        let remaining = controller
+            .store
+            .get_clips_for_video(video_file.to_str().unwrap())
+            .unwrap();
         assert_eq!(remaining.len(), 1);
     }
 

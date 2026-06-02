@@ -65,7 +65,9 @@ mod clipping_guard_tests {
         assert!(controller.is_clipping);
 
         {
-            let _guard = ClippingGuard { ctrl: &mut controller };
+            let _guard = ClippingGuard {
+                ctrl: &mut controller,
+            };
             // Guard is active - can't access controller while borrowed
         } // Guard drops here
 
@@ -223,7 +225,9 @@ pub async fn save_clip_logic(
             return Err("Clip already in progress".to_string());
         }
 
-        let video_path = ctrl.current_video.clone()
+        let video_path = ctrl
+            .current_video
+            .clone()
             .ok_or_else(|| "No video loaded".to_string())?;
 
         ctrl.is_clipping = true;
@@ -259,7 +263,8 @@ pub async fn save_clip_logic(
     }; // MutexGuard dropped here, but is_clipping stays true
 
     // Phase 2: FFmpeg execution (no lock held - other commands can proceed)
-    let result = clipper.save_clip(&video_path, start_time, end_time, &output_path)
+    let result = clipper
+        .save_clip(&video_path, start_time, end_time, &output_path)
         .await
         .map_err(|e| e.to_string());
 
@@ -349,9 +354,7 @@ pub async fn start_video_server(
 }
 
 /// Core logic for getting settings, separated from Tauri wrapper for testability
-pub async fn get_settings_logic(
-    controller: Arc<Mutex<Controller>>,
-) -> Result<Settings, String> {
+pub async fn get_settings_logic(controller: Arc<Mutex<Controller>>) -> Result<Settings, String> {
     let ctrl = controller.lock().await;
     Ok(ctrl.settings.clone())
 }
@@ -360,9 +363,7 @@ pub async fn get_settings_logic(
 ///
 /// Returns the current settings or defaults if no settings file exists.
 #[tauri::command]
-pub async fn get_settings(
-    state: State<'_, Arc<Mutex<Controller>>>,
-) -> Result<Settings, String> {
+pub async fn get_settings(state: State<'_, Arc<Mutex<Controller>>>) -> Result<Settings, String> {
     get_settings_logic(state.inner().clone()).await
 }
 
@@ -398,8 +399,8 @@ pub async fn save_settings(
 mod tests {
     use super::*;
     use crate::storage::ClipStore;
-    use tempfile::TempDir;
     use std::path::PathBuf;
+    use tempfile::TempDir;
 
     fn create_test_controller() -> (Arc<Mutex<Controller>>, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -409,15 +410,18 @@ mod tests {
         let clips_dir = temp_dir.path().join("clips");
         std::fs::create_dir_all(&clips_dir).unwrap();
 
-        (Arc::new(Mutex::new(Controller {
-            clipper: Clipper::new(5.0, 5.0),
-            settings: Settings::default(),
-            store,
-            current_video: None,
-            clip_count: 0,
-            is_clipping: false,
-            clips_dir,
-        })), temp_dir)
+        (
+            Arc::new(Mutex::new(Controller {
+                clipper: Clipper::new(5.0, 5.0),
+                settings: Settings::default(),
+                store,
+                current_video: None,
+                clip_count: 0,
+                is_clipping: false,
+                clips_dir,
+            })),
+            temp_dir,
+        )
     }
 
     #[tokio::test]
@@ -593,10 +597,7 @@ mod tests {
     async fn test_open_video_logic_file_not_found() {
         let (controller, _temp_dir) = create_test_controller();
 
-        let result = open_video_logic(
-            controller,
-            PathBuf::from("/nonexistent/video.mp4"),
-        ).await;
+        let result = open_video_logic(controller, PathBuf::from("/nonexistent/video.mp4")).await;
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("does not exist"));
@@ -615,10 +616,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=black:s=320x240:d=2",
-                "-c:v", "libx264",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=320x240:d=2",
+                "-c:v",
+                "libx264",
+                "-t",
+                "2",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -636,7 +641,10 @@ mod tests {
 
         assert_eq!(response.source_path, video_path.to_str().unwrap());
         assert!(!response.converted, "MP4 should not need conversion");
-        assert!(response.duration >= 1.5 && response.duration <= 2.5, "Duration should be ~2 seconds");
+        assert!(
+            response.duration >= 1.5 && response.duration <= 2.5,
+            "Duration should be ~2 seconds"
+        );
 
         // Verify controller state was updated
         let ctrl = controller.lock().await;
@@ -656,10 +664,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=red:s=320x240:d=2",
-                "-c:v", "libx264",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=320x240:d=2",
+                "-c:v",
+                "libx264",
+                "-t",
+                "2",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -678,7 +690,10 @@ mod tests {
         assert_eq!(response.source_path, video_path.to_str().unwrap());
         assert!(response.converted, "MKV should need conversion");
         assert!(response.play_path.ends_with(".converted.mp4"));
-        assert!(response.duration >= 1.5 && response.duration <= 2.5, "Duration should be ~2 seconds");
+        assert!(
+            response.duration >= 1.5 && response.duration <= 2.5,
+            "Duration should be ~2 seconds"
+        );
 
         // Verify controller state was updated
         let ctrl = controller.lock().await;
@@ -696,7 +711,11 @@ mod tests {
 
         let video_server = Arc::new(Mutex::new(VideoServer::new()));
 
-        let result = start_video_server_logic(video_server.clone(), video_path.to_str().unwrap().to_string()).await;
+        let result = start_video_server_logic(
+            video_server.clone(),
+            video_path.to_str().unwrap().to_string(),
+        )
+        .await;
 
         assert!(result.is_ok(), "Should succeed: {:?}", result.err());
         let url = result.unwrap();
@@ -711,10 +730,8 @@ mod tests {
 
         let video_server = Arc::new(Mutex::new(VideoServer::new()));
 
-        let result = start_video_server_logic(
-            video_server,
-            "/nonexistent/video.mp4".to_string(),
-        ).await;
+        let result =
+            start_video_server_logic(video_server, "/nonexistent/video.mp4".to_string()).await;
 
         // The server should still start even if file doesn't exist
         // (file existence is checked when serving, not when starting)
@@ -853,7 +870,9 @@ mod tests {
             buffer_before: 5.0,
             buffer_after: 5.0,
             clip_key: "c".to_string(),
-            output_dir: Some(std::path::PathBuf::from("/nonexistent/path/that/does/not/exist")),
+            output_dir: Some(std::path::PathBuf::from(
+                "/nonexistent/path/that/does/not/exist",
+            )),
             theme: crate::settings::Theme::Dark,
         };
 
@@ -864,8 +883,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_clips_logic_with_current_video() {
-        use tokio::process::Command;
         use tempfile::TempDir;
+        use tokio::process::Command;
 
         let (controller, temp_dir) = create_test_controller();
 
@@ -874,10 +893,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=320x240:d=5",
-                "-c:v", "libx264",
-                "-t", "5",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x240:d=5",
+                "-c:v",
+                "libx264",
+                "-t",
+                "5",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -968,10 +991,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=green:s=320x240:d=2",
-                "-c:v", "libvpx-vp9",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=green:s=320x240:d=2",
+                "-c:v",
+                "libvpx-vp9",
+                "-t",
+                "2",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -1005,10 +1032,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=red:s=320x240:d=10",
-                "-c:v", "libx264",
-                "-t", "10",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=320x240:d=10",
+                "-c:v",
+                "libx264",
+                "-t",
+                "10",
                 video_path.to_str().unwrap(),
             ])
             .output()

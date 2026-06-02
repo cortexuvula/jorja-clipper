@@ -246,8 +246,8 @@ mod tests {
 
     #[test]
     fn test_settings_load_and_save_roundtrip() {
-        use tempfile::TempDir;
         use std::fs;
+        use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("test_config.json");
@@ -272,7 +272,10 @@ mod tests {
         assert_eq!(loaded_settings.buffer_before, 15.0);
         assert_eq!(loaded_settings.buffer_after, 20.0);
         assert_eq!(loaded_settings.clip_key, "x");
-        assert_eq!(loaded_settings.output_dir, Some(std::path::PathBuf::from("/custom/output")));
+        assert_eq!(
+            loaded_settings.output_dir,
+            Some(std::path::PathBuf::from("/custom/output"))
+        );
         assert_eq!(loaded_settings.theme, Theme::Light);
     }
 
@@ -306,8 +309,8 @@ mod tests {
 
     #[test]
     fn test_settings_load_invalid_json() {
-        use tempfile::TempDir;
         use std::fs;
+        use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
         let config_path = temp_dir.path().join("invalid_config.json");
@@ -325,7 +328,11 @@ mod tests {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
-        let nested_path = temp_dir.path().join("level1").join("level2").join("config.json");
+        let nested_path = temp_dir
+            .path()
+            .join("level1")
+            .join("level2")
+            .join("config.json");
 
         let settings = Settings::default();
 
@@ -371,7 +378,12 @@ mod tests {
         use tempfile::TempDir;
 
         let temp_dir = TempDir::new().unwrap();
-        let nested_path = temp_dir.path().join("a").join("b").join("c").join("config.json");
+        let nested_path = temp_dir
+            .path()
+            .join("a")
+            .join("b")
+            .join("c")
+            .join("config.json");
 
         let settings = Settings::default();
 

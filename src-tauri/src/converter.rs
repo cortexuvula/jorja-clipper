@@ -5,7 +5,7 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::Duration;
 
-use crate::error::{AppError, AppResult, ffmpeg_not_found_error};
+use crate::error::{ffmpeg_not_found_error, AppError, AppResult};
 
 /// Web-compatible video formats (can be played directly in HTML5 video)
 const WEB_FORMATS: &[&str] = &["mp4", "webm", "ogg", "ogv", "m4v"];
@@ -68,7 +68,9 @@ impl Converter {
             Err(_) => {
                 // Stream copy failed, fall back to transcode
                 eprintln!("Stream copy failed, falling back to transcode");
-                let _ = progress_tx.send(ConversionStatus::FallbackToTranscode).await;
+                let _ = progress_tx
+                    .send(ConversionStatus::FallbackToTranscode)
+                    .await;
             }
         }
 
@@ -103,29 +105,26 @@ impl Converter {
 
         let mut cmd = Command::new(crate::util::resolve_binary("ffprobe"));
         cmd.args([
-                "-v",
-                "error",
-                "-show_entries",
-                "format=duration",
-                "-of",
-                "default=noprint_wrappers=1:nokey=1",
-                input_str,
-            ]);
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            input_str,
+        ]);
 
         // Prevent console window from appearing on Windows
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    ffmpeg_not_found_error("getting video duration")
-                } else {
-                    AppError::Clip(format!("Failed to run ffprobe: {}", e))
-                }
-            })?;
+        let output = cmd.output().await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ffmpeg_not_found_error("getting video duration")
+            } else {
+                AppError::Clip(format!("Failed to run ffprobe: {}", e))
+            }
+        })?;
 
         if !output.status.success() {
             return Err(AppError::Clip("ffprobe failed".to_string()));
@@ -169,15 +168,13 @@ impl Converter {
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    ffmpeg_not_found_error(operation)
-                } else {
-                    AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
-                }
-            })?;
+        let mut child = cmd.spawn().map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ffmpeg_not_found_error(operation)
+            } else {
+                AppError::Clip(format!("Failed to spawn ffmpeg: {}", e))
+            }
+        })?;
 
         Self::parse_progress(&mut child, duration, progress_tx).await?;
 
@@ -226,11 +223,7 @@ impl Converter {
             input_path,
             output_path,
             &[
-                "-c:v", "libx264",
-                "-preset", "fast",
-                "-crf", "23",
-                "-c:a", "aac",
-                "-b:a", "128k",
+                "-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
             ],
             duration,
             progress_tx,
@@ -395,7 +388,10 @@ mod tests {
         let output_dir = Path::new("/tmp/clips");
 
         let result = Converter::get_output_path(input, output_dir).unwrap();
-        assert_eq!(result, PathBuf::from("/tmp/clips/2024-game-highlights.converted.mp4"));
+        assert_eq!(
+            result,
+            PathBuf::from("/tmp/clips/2024-game-highlights.converted.mp4")
+        );
     }
 
     #[test]
@@ -481,9 +477,15 @@ mod tests {
     #[test]
     fn test_is_web_compatible_with_path() {
         // Should work with full paths
-        assert!(Converter::is_web_compatible(Path::new("/home/user/videos/test.mp4")));
-        assert!(Converter::is_web_compatible(Path::new("C:\\Users\\test\\video.webm")));
-        assert!(!Converter::is_web_compatible(Path::new("/home/user/videos/test.mkv")));
+        assert!(Converter::is_web_compatible(Path::new(
+            "/home/user/videos/test.mp4"
+        )));
+        assert!(Converter::is_web_compatible(Path::new(
+            "C:\\Users\\test\\video.webm"
+        )));
+        assert!(!Converter::is_web_compatible(Path::new(
+            "/home/user/videos/test.mkv"
+        )));
     }
 
     #[test]
@@ -492,7 +494,10 @@ mod tests {
         let output_dir = Path::new("/output");
 
         let result = Converter::get_output_path(input, output_dir).unwrap();
-        assert_eq!(result, PathBuf::from("/output/my video (2024).converted.mp4"));
+        assert_eq!(
+            result,
+            PathBuf::from("/output/my video (2024).converted.mp4")
+        );
     }
 
     #[test]
@@ -517,10 +522,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=black:s=320x240:d=5",
-                "-c:v", "libx264",
-                "-t", "5",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=320x240:d=5",
+                "-c:v",
+                "libx264",
+                "-t",
+                "5",
                 test_video.to_str().unwrap(),
             ])
             .output()
@@ -528,7 +537,10 @@ mod tests {
             .unwrap();
 
         if !output.status.success() {
-            eprintln!("FFmpeg output: {:?}", String::from_utf8_lossy(&output.stderr));
+            eprintln!(
+                "FFmpeg output: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             panic!("Failed to create test video");
         }
 
@@ -536,7 +548,11 @@ mod tests {
         let duration = Converter::get_duration(&test_video).await.unwrap();
 
         // Duration should be approximately 5 seconds (allow some tolerance)
-        assert!(duration >= 4.5 && duration <= 5.5, "Expected ~5 seconds, got {}", duration);
+        assert!(
+            duration >= 4.5 && duration <= 5.5,
+            "Expected ~5 seconds, got {}",
+            duration
+        );
     }
 
     #[tokio::test]
@@ -554,10 +570,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=320x240:d=2",
-                "-c:v", "libx264",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x240:d=2",
+                "-c:v",
+                "libx264",
+                "-t",
+                "2",
                 input_video.to_str().unwrap(),
             ])
             .output()
@@ -612,10 +632,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=red:s=320x240:d=2",
-                "-c:v", "libx264",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=320x240:d=2",
+                "-c:v",
+                "libx264",
+                "-t",
+                "2",
                 input_video.to_str().unwrap(),
             ])
             .output()
@@ -641,9 +665,12 @@ mod tests {
         // Verify the output is actually MP4 format
         let output = Command::new("ffprobe")
             .args([
-                "-v", "error",
-                "-show_entries", "format=format_name",
-                "-of", "default=noprint_wrappers=1:nokey=1",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=format_name",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
                 output_path.to_str().unwrap(),
             ])
             .output()
@@ -651,7 +678,11 @@ mod tests {
             .unwrap();
 
         let format = String::from_utf8_lossy(&output.stdout);
-        assert!(format.contains("mp4"), "Output should be MP4 format, got: {}", format);
+        assert!(
+            format.contains("mp4"),
+            "Output should be MP4 format, got: {}",
+            format
+        );
     }
 
     #[tokio::test]
@@ -705,13 +736,20 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=green:s=320x240:d=2",
-                "-f", "lavfi",
-                "-i", "sine=frequency=440:duration=2",
-                "-c:v", "libvpx-vp9",
-                "-c:a", "libopus",
-                "-t", "2",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=green:s=320x240:d=2",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-c:v",
+                "libvpx-vp9",
+                "-c:a",
+                "libopus",
+                "-t",
+                "2",
                 input_video.to_str().unwrap(),
             ])
             .output()
@@ -719,7 +757,10 @@ mod tests {
             .unwrap();
 
         if !output.status.success() {
-            eprintln!("FFmpeg output: {:?}", String::from_utf8_lossy(&output.stderr));
+            eprintln!(
+                "FFmpeg output: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            );
             panic!("Failed to create test video with VP9 codec");
         }
 
@@ -730,7 +771,11 @@ mod tests {
         let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
 
         // Should succeed (either via stream copy or transcode)
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
 
         let output_path = result.unwrap();
         assert!(output_path.exists(), "Output file should exist");
@@ -744,7 +789,10 @@ mod tests {
         eprintln!("Received statuses: {:?}", statuses);
 
         // The conversion should have completed (either way)
-        assert!(statuses.iter().any(|s| s.contains("Completed")), "Should receive Completed status");
+        assert!(
+            statuses.iter().any(|s| s.contains("Completed")),
+            "Should receive Completed status"
+        );
     }
 
     #[tokio::test]
@@ -779,11 +827,16 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=640x480:d=10",
-                "-c:v", "libx264",
-                "-preset", "ultrafast",
-                "-t", "10",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=640x480:d=10",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-t",
+                "10",
                 input_video.to_str().unwrap(),
             ])
             .output()
@@ -799,7 +852,11 @@ mod tests {
         // Convert the video
         let result = Converter::convert_to_mp4(&input_video, &output_dir, tx).await;
 
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
 
         // Collect all progress updates
         let mut progress_updates = vec![];
@@ -810,11 +867,19 @@ mod tests {
         }
 
         // We should have received at least one progress update
-        assert!(!progress_updates.is_empty(), "Should receive progress updates");
+        assert!(
+            !progress_updates.is_empty(),
+            "Should receive progress updates"
+        );
 
         // The last update should be 100%
-        assert!(progress_updates.last().map(|&p| (p - 100.0).abs() < 0.1).unwrap_or(false),
-                "Last progress should be 100%");
+        assert!(
+            progress_updates
+                .last()
+                .map(|&p| (p - 100.0).abs() < 0.1)
+                .unwrap_or(false),
+            "Last progress should be 100%"
+        );
     }
 
     #[tokio::test]
@@ -850,9 +915,12 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args(&[
                 "-y",
-                "-f", "lavfi",
-                "-i", "testsrc=duration=1:size=320x240:rate=1",
-                "-c:v", "libx264",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=duration=1:size=320x240:rate=1",
+                "-c:v",
+                "libx264",
                 input_path.to_str().unwrap(),
             ])
             .output()
@@ -860,7 +928,10 @@ mod tests {
             .unwrap();
 
         if !output.status.success() {
-            panic!("Failed to create test video: {:?}", String::from_utf8_lossy(&output.stderr));
+            panic!(
+                "Failed to create test video: {:?}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
 
         let (tx, _rx) = mpsc::channel(100);
@@ -886,9 +957,12 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=green:s=320x240:d=2",
-                "-c:v", "libx264",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=green:s=320x240:d=2",
+                "-c:v",
+                "libx264",
                 input_path.to_str().unwrap(),
             ])
             .output()
@@ -903,12 +977,19 @@ mod tests {
 
         // Should succeed
         let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
 
         // Verify the output file exists in the output directory
         let output_path = result.unwrap();
         assert!(output_path.exists(), "Output file should exist");
-        assert!(output_path.starts_with(&output_dir), "Output should be in the specified directory");
+        assert!(
+            output_path.starts_with(&output_dir),
+            "Output should be in the specified directory"
+        );
     }
 
     #[tokio::test]
@@ -923,10 +1004,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=black:s=320x240:d=0.1",
-                "-c:v", "libx264",
-                "-t", "0.1",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=320x240:d=0.1",
+                "-c:v",
+                "libx264",
+                "-t",
+                "0.1",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -956,10 +1041,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=320x240:d=30",
-                "-c:v", "libx264",
-                "-t", "30",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x240:d=30",
+                "-c:v",
+                "libx264",
+                "-t",
+                "30",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -991,12 +1080,18 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=red:s=320x240:d=2",
-                "-f", "lavfi",
-                "-i", "sine=frequency=440:duration=2",
-                "-c:v", "libx264",
-                "-c:a", "aac",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=red:s=320x240:d=2",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=2",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
                 input_path.to_str().unwrap(),
             ])
             .output()
@@ -1011,7 +1106,11 @@ mod tests {
 
         // Should succeed
         let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
 
         let output_path = result.unwrap();
         assert!(output_path.exists(), "Output file should exist");
@@ -1031,9 +1130,12 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=green:s=320x240:d=2",
-                "-c:v", "libvpx-vp9",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=green:s=320x240:d=2",
+                "-c:v",
+                "libvpx-vp9",
                 input_path.to_str().unwrap(),
             ])
             .output()
@@ -1048,7 +1150,11 @@ mod tests {
 
         // Should succeed (WebM is web-compatible but may need conversion)
         let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -1065,10 +1171,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=320x240:d=2",
-                "-c:v", "libtheora",
-                "-q:v", "5",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x240:d=2",
+                "-c:v",
+                "libtheora",
+                "-q:v",
+                "5",
                 input_path.to_str().unwrap(),
             ])
             .output()
@@ -1085,6 +1195,10 @@ mod tests {
 
         // Should succeed
         let result = Converter::convert_to_mp4(&input_path, &output_dir, tx).await;
-        assert!(result.is_ok(), "Conversion should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Conversion should succeed: {:?}",
+            result.err()
+        );
     }
 }

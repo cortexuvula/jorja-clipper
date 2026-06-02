@@ -26,7 +26,11 @@ pub fn resolve_binary(name: &str) -> PathBuf {
     // First, try to get the sidecar path from the app handle
     if let Some(sidecar_path) = get_sidecar_path(name) {
         if sidecar_path.exists() {
-            println!("[binary] {} resolved to sidecar: {}", name, sidecar_path.display());
+            println!(
+                "[binary] {} resolved to sidecar: {}",
+                name,
+                sidecar_path.display()
+            );
             return sidecar_path;
         }
     }
@@ -87,17 +91,25 @@ fn sidecar_name(tool: &str) -> String {
     #[cfg(target_os = "macos")]
     {
         #[cfg(target_arch = "aarch64")]
-        { format!("{}-aarch64-apple-darwin", tool) }
+        {
+            format!("{}-aarch64-apple-darwin", tool)
+        }
 
         #[cfg(target_arch = "x86_64")]
-        { format!("{}-x86_64-apple-darwin", tool) }
+        {
+            format!("{}-x86_64-apple-darwin", tool)
+        }
     }
 
     #[cfg(target_os = "windows")]
-    { format!("{}-x86_64-pc-windows-msvc.exe", tool) }
+    {
+        format!("{}-x86_64-pc-windows-msvc.exe", tool)
+    }
 
     #[cfg(target_os = "linux")]
-    { format!("{}-x86_64-unknown-linux-gnu", tool) }
+    {
+        format!("{}-x86_64-unknown-linux-gnu", tool)
+    }
 }
 
 /// Get the FFmpeg sidecar binary name.
@@ -308,7 +320,9 @@ mod tests {
         // The config directory should be either absolute or relative to current dir
         let path_str = config_dir.to_str().unwrap();
         assert!(
-            config_dir.is_absolute() || path_str.starts_with(".") || path_str.starts_with("jorja-clipper"),
+            config_dir.is_absolute()
+                || path_str.starts_with(".")
+                || path_str.starts_with("jorja-clipper"),
             "Config dir should be absolute or relative: {}",
             path_str
         );
@@ -323,7 +337,10 @@ mod tests {
         assert!(result.is_ok(), "Should be able to create config directory");
 
         // Verify it exists
-        assert!(config_dir.exists(), "Config directory should exist after creation");
+        assert!(
+            config_dir.exists(),
+            "Config directory should exist after creation"
+        );
 
         // Clean up
         let _ = std::fs::remove_dir_all(&config_dir);

@@ -175,11 +175,7 @@ mod tests {
 
     #[test]
     fn test_ffmpeg_not_found_error_different_operations() {
-        let operations = vec![
-            "converting video",
-            "extracting clip",
-            "processing file",
-        ];
+        let operations = vec!["converting video", "extracting clip", "processing file"];
 
         for op in operations {
             let err = ffmpeg_not_found_error(op);

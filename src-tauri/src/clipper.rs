@@ -1,4 +1,4 @@
-use crate::error::{AppError, AppResult, ffmpeg_not_found_error};
+use crate::error::{ffmpeg_not_found_error, AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -48,7 +48,12 @@ impl Clipper {
         Ok(())
     }
 
-    pub fn output_path(&self, video_path: &Path, clip_number: i32, output_dir: Option<&Path>) -> AppResult<PathBuf> {
+    pub fn output_path(
+        &self,
+        video_path: &Path,
+        clip_number: i32,
+        output_dir: Option<&Path>,
+    ) -> AppResult<PathBuf> {
         let clips_dir = match output_dir {
             Some(dir) => dir.to_path_buf(),
             None => video_path
@@ -77,46 +82,43 @@ impl Clipper {
         output_path: &Path,
     ) -> AppResult<ClipResult> {
         // Convert paths to strings, returning a graceful error for non-UTF8 paths
-        let video_path_str = video_path
-            .to_str()
-            .ok_or_else(|| AppError::Ffmpeg("Video path contains non-UTF8 characters".to_string()))?;
-        let output_path_str = output_path
-            .to_str()
-            .ok_or_else(|| AppError::Ffmpeg("Output path contains non-UTF8 characters".to_string()))?;
+        let video_path_str = video_path.to_str().ok_or_else(|| {
+            AppError::Ffmpeg("Video path contains non-UTF8 characters".to_string())
+        })?;
+        let output_path_str = output_path.to_str().ok_or_else(|| {
+            AppError::Ffmpeg("Output path contains non-UTF8 characters".to_string())
+        })?;
 
         // Run FFmpeg with stream copy (lossless)
         let mut cmd = Command::new(crate::util::resolve_binary("ffmpeg"));
         cmd.args([
-                "-y", // Overwrite output
-                "-ss",
-                &format!("{:.3}", start_time),
-                "-to",
-                &format!("{:.3}", end_time),
-                "-i",
-                video_path_str,
-                "-c",
-                "copy", // Stream copy (no re-encoding)
-                "-avoid_negative_ts",
-                "1",
-                output_path_str,
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            "-y", // Overwrite output
+            "-ss",
+            &format!("{:.3}", start_time),
+            "-to",
+            &format!("{:.3}", end_time),
+            "-i",
+            video_path_str,
+            "-c",
+            "copy", // Stream copy (no re-encoding)
+            "-avoid_negative_ts",
+            "1",
+            output_path_str,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
         // Prevent console window from appearing on Windows
         #[cfg(windows)]
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
 
-        let output = cmd
-            .output()
-            .await
-            .map_err(|e| {
-                if e.kind() == std::io::ErrorKind::NotFound {
-                    ffmpeg_not_found_error("saving clip")
-                } else {
-                    AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
-                }
-            })?;
+        let output = cmd.output().await.map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                ffmpeg_not_found_error("saving clip")
+            } else {
+                AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
+            }
+        })?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -317,10 +319,14 @@ mod tests {
         let output = Command::new("ffmpeg")
             .args([
                 "-y",
-                "-f", "lavfi",
-                "-i", "color=c=blue:s=320x240:d=10",
-                "-c:v", "libx264",
-                "-t", "10",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=320x240:d=10",
+                "-c:v",
+                "libx264",
+                "-t",
+                "10",
                 video_path.to_str().unwrap(),
             ])
             .output()
@@ -372,12 +378,14 @@ mod tests {
         let clipper = Clipper::new(2.0, 2.0);
 
         // Try to save a clip from a non-existent video
-        let result = clipper.save_clip(
-            Path::new("/nonexistent/video.mp4"),
-            1.0,
-            3.0,
-            Path::new("/tmp/output.mp4"),
-        ).await;
+        let result = clipper
+            .save_clip(
+                Path::new("/nonexistent/video.mp4"),
+                1.0,
+                3.0,
+                Path::new("/tmp/output.mp4"),
+            )
+            .await;
 
         // Should fail because the video doesn't exist
         assert!(result.is_err());
@@ -396,7 +404,10 @@ mod tests {
 
         assert!(result.is_ok());
         let output_path = result.unwrap();
-        assert!(output_path.to_str().unwrap().contains("my video (2024) [HD]"));
+        assert!(output_path
+            .to_str()
+            .unwrap()
+            .contains("my video (2024) [HD]"));
     }
 
     #[test]
@@ -429,7 +440,10 @@ mod tests {
             assert!(result.is_ok());
             let output_path = result.unwrap();
             // Clip numbers are zero-padded to 5 digits
-            assert!(output_path.to_str().unwrap().contains(&format!("clip_{:05}", i)));
+            assert!(output_path
+                .to_str()
+                .unwrap()
+                .contains(&format!("clip_{:05}", i)));
         }
     }
 

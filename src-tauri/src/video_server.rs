@@ -20,7 +20,10 @@ impl VideoServer {
 
     pub fn start(&mut self, video_path: PathBuf) -> Result<u16, String> {
         // Always update the video path (for both new and existing servers)
-        *self.video_path.lock().map_err(|e| format!("Mutex poisoned: {}", e))? = Some(video_path.clone());
+        *self
+            .video_path
+            .lock()
+            .map_err(|e| format!("Mutex poisoned: {}", e))? = Some(video_path.clone());
 
         // If server already running, return existing port
         if self.port != 0 {
@@ -228,7 +231,10 @@ fn handle_request(
     }
 
     stream.flush()?;
-    println!("[video-server] {} {} ({}-{}) {} bytes", method, status_code, start, end, content_length);
+    println!(
+        "[video-server] {} {} ({}-{}) {} bytes",
+        method, status_code, start, end, content_length
+    );
     Ok(())
 }
 
@@ -305,7 +311,7 @@ mod tests {
         // Test range request (bytes 5-9)
         let (status, body) = send_request(
             port,
-            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-9\r\n\r\n"
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-9\r\n\r\n",
         );
 
         assert!(status.contains("206"));
@@ -444,7 +450,7 @@ mod tests {
         // Test open-ended range (bytes=5-)
         let (status, body) = send_request(
             port,
-            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-\r\n\r\n"
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=5-\r\n\r\n",
         );
 
         assert!(status.contains("206"));
@@ -462,7 +468,7 @@ mod tests {
         // Test invalid range header (not starting with "bytes=")
         let (status, body) = send_request(
             port,
-            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: items=0-4\r\n\r\n"
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: items=0-4\r\n\r\n",
         );
 
         // Should return 200 OK (not 206) because the range header is invalid
@@ -480,10 +486,7 @@ mod tests {
 
         // Make multiple requests to the same server
         for _ in 0..3 {
-            let (status, body) = send_request(
-                port,
-                "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n"
-            );
+            let (status, body) = send_request(port, "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n");
 
             assert!(status.contains("200"));
             assert_eq!(body, b"test content");
@@ -504,7 +507,7 @@ mod tests {
         // Request a range from the large file
         let (status, body) = send_request(
             port,
-            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-999\r\n\r\n"
+            "GET / HTTP/1.1\r\nHost: localhost\r\nRange: bytes=0-999\r\n\r\n",
         );
 
         assert!(status.contains("206"));
@@ -520,10 +523,7 @@ mod tests {
         let port = server.start(temp_file.path().to_path_buf()).unwrap();
 
         // Send a DELETE request (unsupported method)
-        let (status, _) = send_request(
-            port,
-            "DELETE / HTTP/1.1\r\nHost: localhost\r\n\r\n"
-        );
+        let (status, _) = send_request(port, "DELETE / HTTP/1.1\r\nHost: localhost\r\n\r\n");
 
         // Should return 405 Method Not Allowed
         assert!(status.contains("405"));
