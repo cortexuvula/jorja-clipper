@@ -1,6 +1,6 @@
 {
   "productName": "Jorja Clipper",
-  "version": "0.5.14",
+  "version": "0.5.15",
   "identifier": "com.jorja.clipper",
   "build": {
     "frontendDist": "../dist",
@@ -31,6 +31,7 @@
     "targets": "all",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/512x512.png",
