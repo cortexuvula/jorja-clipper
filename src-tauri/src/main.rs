@@ -20,15 +20,24 @@ async fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .setup(|app| {
-            // Initialize sidecar paths for bundled FFmpeg binaries
-            util::init_sidecar_paths(app.handle());
+        .setup({
+            // Clone the Arc up front so the setup closure owns its own handle
+            // and the original can still be moved into `.manage(...)` below.
+            let controller_for_cleanup = controller.clone();
+            move |app| {
+                // Initialize sidecar paths for bundled FFmpeg binaries
+                util::init_sidecar_paths(app.handle());
 
-            // Start background cleanup task for converted files
-            let clips_dir = util::app_config_dir().join("clips");
-            tokio::spawn(cleanup::start_cleanup_task(clips_dir, 7));
+                // Start background cleanup task for converted files
+                let clips_dir = util::app_config_dir().join("clips");
+                tokio::spawn(cleanup::start_cleanup_task(
+                    clips_dir,
+                    7,
+                    controller_for_cleanup,
+                ));
 
-            Ok(())
+                Ok(())
+            }
         })
         .manage(controller)
         .manage(video_server)

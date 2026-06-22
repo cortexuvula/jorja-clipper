@@ -1,21 +1,36 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+
+use tokio::sync::Mutex;
 use tokio::time::interval;
+
+use crate::controller::Controller;
 
 /// Clean up converted video files older than the specified age.
 ///
 /// This runs as a background task to prevent accumulation of temporary
-/// converted files during long application sessions.
-pub async fn start_cleanup_task(clips_dir: std::path::PathBuf, max_age_days: u64) {
+/// converted files during long application sessions. Before each sweep it reads
+/// the controller's `last_play_path` so the file currently being watched is
+/// never deleted out from under the player.
+pub async fn start_cleanup_task(
+    clips_dir: std::path::PathBuf,
+    max_age_days: u64,
+    controller: Arc<Mutex<Controller>>,
+) {
     let mut interval = interval(Duration::from_secs(3600)); // Run every hour
 
     loop {
         interval.tick().await;
-        cleanup_old_files(&clips_dir, max_age_days).await;
+        let protected = {
+            let ctrl = controller.lock().await;
+            ctrl.last_play_path.clone()
+        };
+        cleanup_old_files(&clips_dir, max_age_days, protected.as_deref()).await;
     }
 }
 
-async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
+async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64, protected: Option<&Path>) {
     let cutoff = SystemTime::now() - Duration::from_secs(max_age_days * 24 * 60 * 60);
 
     let entries = match tokio::fs::read_dir(clips_dir).await {
@@ -42,6 +57,15 @@ async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
 
         if !is_converted {
             continue;
+        }
+
+        // Never delete the converted file the user is currently watching, even
+        // if it's older than the cutoff — a long paused review session can keep
+        // a file open for far longer than max_age_days.
+        if let Some(p) = protected {
+            if files_equal(&path, p) {
+                continue;
+            }
         }
 
         // Check file age
@@ -78,6 +102,19 @@ async fn cleanup_old_files(clips_dir: &Path, max_age_days: u64) {
     }
 }
 
+/// Compare two paths for equality, canonicalizing both first so that
+/// different textual forms of the same file (e.g. relative vs absolute, or
+/// symlinked paths) compare equal.
+fn files_equal(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,7 +142,7 @@ mod tests {
         file.set_modified(old_time).unwrap();
 
         // Run cleanup with 7-day threshold
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // Old converted file should be removed
         assert!(!old_file.exists());
@@ -139,7 +176,7 @@ mod tests {
         }
 
         // Run cleanup
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // All files should still exist
         for filename in &files {
@@ -156,7 +193,7 @@ mod tests {
         let nonexistent = PathBuf::from("/nonexistent/path/that/does/not/exist");
 
         // Should not panic, just log error
-        cleanup_old_files(&nonexistent, 7).await;
+        cleanup_old_files(&nonexistent, 7, None).await;
     }
 
     #[tokio::test]
@@ -189,7 +226,7 @@ mod tests {
             .unwrap();
 
         // Cleanup with 7-day threshold
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // 5-day-old file should remain
         assert!(file_5_days.exists());
@@ -214,7 +251,7 @@ mod tests {
         file.set_modified(old_time).unwrap();
 
         // Run cleanup
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // Directory should remain (only files are cleaned)
         assert!(fake_dir.exists());
@@ -226,7 +263,7 @@ mod tests {
         let clips_dir = temp_dir.path().to_path_buf();
 
         // Run cleanup on empty directory - should not panic
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
     }
 
     #[tokio::test]
@@ -239,7 +276,7 @@ mod tests {
         std::fs::write(&file, "content").unwrap();
 
         // Run cleanup with 0 days max age - should delete all files
-        cleanup_old_files(&clips_dir, 0).await;
+        cleanup_old_files(&clips_dir, 0, None).await;
 
         // File should be deleted (it's older than 0 days)
         assert!(!file.exists());
@@ -259,7 +296,7 @@ mod tests {
         f.set_modified(old_time).unwrap();
 
         // Run cleanup with 2 years max age - should keep the file
-        cleanup_old_files(&clips_dir, 730).await;
+        cleanup_old_files(&clips_dir, 730, None).await;
 
         // File should remain (it's younger than 730 days)
         assert!(file.exists());
@@ -289,7 +326,7 @@ mod tests {
         f2.set_modified(old_time).unwrap();
 
         // Run cleanup with 7 days max age
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // Only old converted file should be deleted
         assert!(!old_converted.exists());
@@ -308,9 +345,42 @@ mod tests {
         std::fs::write(&file, "content").unwrap();
 
         // Run cleanup with 7 days max age
-        cleanup_old_files(&clips_dir, 7).await;
+        cleanup_old_files(&clips_dir, 7, None).await;
 
         // File should remain (it's new)
         assert!(file.exists());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_protects_currently_open_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let clips_dir = temp_dir.path().to_path_buf();
+
+        // A converted file that would normally be deleted because
+        // max_age_days = 0 means "anything older than this instant".
+        let protected_file = clips_dir.join("playing.converted.mp4");
+        std::fs::write(&protected_file, "content").unwrap();
+
+        // A second old file that should still be removed, to prove the
+        // protected guard is targeted rather than disabling cleanup entirely.
+        let deletable_file = clips_dir.join("stale.converted.mp4");
+        std::fs::write(&deletable_file, "content").unwrap();
+        // Force both files just past the cutoff: sleep so their mtimes are
+        // slightly older than "now" before cleanup computes its cutoff.
+        tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+
+        // Run cleanup with max_age_days = 0 and the playing file protected.
+        cleanup_old_files(&clips_dir, 0, Some(&protected_file)).await;
+
+        // The protected file survives even though it's past the cutoff.
+        assert!(
+            protected_file.exists(),
+            "protected converted file must not be deleted"
+        );
+        // The unprotected old file is removed.
+        assert!(
+            !deletable_file.exists(),
+            "non-protected old file should be removed"
+        );
     }
 }

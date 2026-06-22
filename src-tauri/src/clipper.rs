@@ -74,6 +74,59 @@ impl Clipper {
         Ok(clips_dir.join(clip_filename))
     }
 
+    /// Resolve which output directory would be used for clips of `video_path`.
+    fn clips_dir_for(video_path: &Path, output_dir: Option<&Path>) -> AppResult<PathBuf> {
+        Ok(match output_dir {
+            Some(dir) => dir.to_path_buf(),
+            None => video_path
+                .parent()
+                .ok_or_else(|| AppError::Ffmpeg("Video has no parent directory".to_string()))?
+                .join("clips"),
+        })
+    }
+
+    /// Determine the next clip number for `video_path` by scanning the output
+    /// directory for existing `{stem}_clip_NNNNN.mp4` files.
+    ///
+    /// This is the authoritative source for clip numbering because it reflects
+    /// what is actually on disk. Deriving the number from the DB row count or
+    /// `clip_count` is unsafe: those values drop when clips are deleted (by the
+    /// user or by `get_clips` pruning missing files), which would cause the
+    /// next clip to reuse a number and silently overwrite an existing file.
+    /// Scanning the disk guarantees the next number is strictly greater than
+    /// any existing clip file for this video.
+    pub fn next_clip_number(&self, video_path: &Path, output_dir: Option<&Path>) -> AppResult<i32> {
+        let clips_dir = Self::clips_dir_for(video_path, output_dir)?;
+        let stem = video_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(|| AppError::Ffmpeg("Video has no filename".to_string()))?;
+
+        let prefix = format!("{}_clip_", stem);
+        let mut max_number: i32 = 0;
+
+        if let Ok(entries) = std::fs::read_dir(&clips_dir) {
+            for entry in entries.flatten() {
+                let os_name = entry.file_name();
+                let Some(file_name) = os_name.to_str() else {
+                    continue;
+                };
+                if !file_name.starts_with(&prefix) || !file_name.ends_with(".mp4") {
+                    continue;
+                }
+                // middle = "{NNNNN}"
+                let middle = &file_name[prefix.len()..file_name.len() - ".mp4".len()];
+                if let Ok(n) = middle.parse::<i32>() {
+                    if n > max_number {
+                        max_number = n;
+                    }
+                }
+            }
+        }
+
+        Ok(max_number + 1)
+    }
+
     pub async fn save_clip(
         &self,
         video_path: &Path,
@@ -89,24 +142,96 @@ impl Clipper {
             AppError::Ffmpeg("Output path contains non-UTF8 characters".to_string())
         })?;
 
-        // Run FFmpeg with stream copy (lossless)
-        let mut cmd = Command::new(crate::util::resolve_binary("ffmpeg"));
-        cmd.args([
-            "-y", // Overwrite output
-            "-ss",
-            &format!("{:.3}", start_time),
-            "-to",
-            &format!("{:.3}", end_time),
-            "-i",
+        // Run FFmpeg with stream copy (lossless). Input-seeking (-ss/-to before
+        // -i) with -c copy is fast but can land mid-GOP, occasionally yielding
+        // a tiny or empty clip. We validate the output and retry via transcode
+        // when that happens.
+        let copy_run = Self::run_clip_ffmpeg(
             video_path_str,
-            "-c",
-            "copy", // Stream copy (no re-encoding)
-            "-avoid_negative_ts",
-            "1",
             output_path_str,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+            output_path,
+            &[
+                "-y",
+                "-ss",
+                &format!("{:.3}", start_time),
+                "-to",
+                &format!("{:.3}", end_time),
+            ],
+            &["-c", "copy", "-avoid_negative_ts", "1"],
+            "saving clip (stream copy)",
+        )
+        .await;
+
+        let needs_transcode_retry = match copy_run {
+            Ok(()) => !Self::looks_like_valid_clip(output_path),
+            Err(_) => true,
+        };
+
+        if needs_transcode_retry {
+            // Remove any partial/tiny output from the stream-copy attempt.
+            if output_path.exists() {
+                let _ = std::fs::remove_file(output_path);
+            }
+
+            // Fallback: output-seeking transcode. -ss/-to go AFTER -i so ffmpeg
+            // decodes up to the cut point and produces an accurate, keyframe-
+            // independent clip. Slower, but reliable.
+            Self::run_clip_ffmpeg(
+                video_path_str,
+                output_path_str,
+                output_path,
+                &["-y"],
+                &[
+                    "-ss",
+                    &format!("{:.3}", start_time),
+                    "-to",
+                    &format!("{:.3}", end_time),
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "fast",
+                    "-crf",
+                    "23",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "128k",
+                ],
+                "saving clip (transcode fallback)",
+            )
+            .await?;
+        }
+
+        Ok(ClipResult {
+            success: true,
+            path: output_path.to_string_lossy().to_string(),
+            start_time,
+            end_time,
+            error: None,
+        })
+    }
+
+    /// Run a single ffmpeg invocation to extract a clip.
+    ///
+    /// `input_args` are placed before `-i <video>`, `output_args` after it,
+    /// and the output path is appended last. On failure the partial output
+    /// file is removed and an error describing ffmpeg's stderr is returned.
+    async fn run_clip_ffmpeg(
+        video_path_str: &str,
+        output_path_str: &str,
+        output_path: &Path,
+        input_args: &[&str],
+        output_args: &[&str],
+        operation: &str,
+    ) -> AppResult<()> {
+        let mut cmd = Command::new(crate::util::resolve_binary("ffmpeg"));
+        cmd.args(input_args)
+            .arg("-i")
+            .arg(video_path_str)
+            .args(output_args)
+            .arg(output_path_str)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
         // Prevent console window from appearing on Windows
         #[cfg(windows)]
@@ -114,7 +239,7 @@ impl Clipper {
 
         let output = cmd.output().await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                ffmpeg_not_found_error("saving clip")
+                ffmpeg_not_found_error(operation)
             } else {
                 AppError::Ffmpeg(format!("Failed to run FFmpeg: {}", e))
             }
@@ -131,13 +256,16 @@ impl Clipper {
             return Err(AppError::Ffmpeg(format!("FFmpeg failed: {}", stderr)));
         }
 
-        Ok(ClipResult {
-            success: true,
-            path: output_path.to_string_lossy().to_string(),
-            start_time,
-            end_time,
-            error: None,
-        })
+        Ok(())
+    }
+
+    /// Heuristic: a real clip should be at least a few KB. Smaller outputs
+    /// usually mean stream-copy landed mid-GOP and produced a degenerate file.
+    fn looks_like_valid_clip(output_path: &Path) -> bool {
+        match std::fs::metadata(output_path) {
+            Ok(m) => m.len() >= 1024,
+            Err(_) => false,
+        }
     }
 }
 
@@ -196,6 +324,48 @@ mod tests {
 
         // Clean up
         let _ = std::fs::remove_dir_all(&tmp_dir);
+    }
+
+    #[test]
+    fn test_next_clip_number_empty_dir() {
+        let clipper = Clipper::new(5.0, 5.0);
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let video_path = tmp_dir.path().join("game.mp4");
+
+        // No existing clips -> first number is 1.
+        assert_eq!(clipper.next_clip_number(&video_path, None).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_next_clip_number_picks_max_plus_one() {
+        let clipper = Clipper::new(5.0, 5.0);
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let clips_dir = tmp_dir.path().join("clips");
+        std::fs::create_dir_all(&clips_dir).unwrap();
+        let video_path = tmp_dir.path().join("game.mp4");
+
+        // Pretend clips 1, 2, and 5 already exist (simulating prior deletions
+        // of 3 and 4 — the next number must be 6, never reusing a gap).
+        for n in [1, 2, 5] {
+            std::fs::write(clips_dir.join(format!("game_clip_{:05}.mp4", n)), "x").unwrap();
+        }
+
+        assert_eq!(clipper.next_clip_number(&video_path, None).unwrap(), 6);
+    }
+
+    #[test]
+    fn test_next_clip_number_ignores_other_videos_and_non_clips() {
+        let clipper = Clipper::new(5.0, 5.0);
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let clips_dir = tmp_dir.path().join("clips");
+        std::fs::create_dir_all(&clips_dir).unwrap();
+        let video_path = tmp_dir.path().join("game.mp4");
+
+        // A clip from a different video and an unrelated file must not count.
+        std::fs::write(clips_dir.join("other_clip_00009.mp4"), "x").unwrap();
+        std::fs::write(clips_dir.join("game_converted.mp4"), "x").unwrap();
+
+        assert_eq!(clipper.next_clip_number(&video_path, None).unwrap(), 1);
     }
 
     #[tokio::test]

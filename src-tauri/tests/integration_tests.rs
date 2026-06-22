@@ -23,6 +23,7 @@ async fn create_test_controller() -> (Arc<Mutex<Controller>>, TempDir) {
         clip_count: 0,
         is_clipping: false,
         clips_dir,
+        last_play_path: None,
     };
 
     (Arc::new(Mutex::new(controller)), temp_dir)

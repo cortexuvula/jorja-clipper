@@ -56,6 +56,7 @@ mod clipping_guard_tests {
             clip_count: 0,
             is_clipping: true,
             clips_dir: temp_dir.path().to_path_buf(),
+            last_play_path: None,
         }
     }
 
@@ -132,7 +133,15 @@ pub async fn open_video_logic(
     // Phase 3: Finalize (re-acquire lock)
     let mut ctrl = controller.lock().await;
     ctrl.current_video = Some(source_path.clone());
-    let duration = Converter::get_duration(&source_path)
+    // Record the file being played so the background cleanup task never
+    // deletes the converted MP4 out from under the player.
+    ctrl.last_play_path = Some(play_path.clone());
+    // Probe the file we'll actually play. For non-web inputs the source can be
+    // a container ffprobe reads inconsistently (which is often *why* conversion
+    // was triggered); probing the freshly converted MP4 avoids spurious
+    // "Failed to get video duration" errors after a successful conversion.
+    let probe_path = if converted { &play_path } else { &source_path };
+    let duration = Converter::get_duration(probe_path)
         .await
         .map_err(|e| e.to_string())?;
     ctrl.get_clips().map_err(|e| e.to_string())?;
@@ -236,7 +245,16 @@ pub async fn save_clip_logic(
         // guard drops and resets is_clipping on early return
         Clipper::validate_times(start, end)?;
 
-        let clip_number = guard.ctrl.clip_count + 1;
+        // Derive the clip number from what's actually on disk, not from
+        // clip_count or DB row count. Those values drop when clips are deleted
+        // (by the user or by get_clips pruning missing files), which would
+        // otherwise reuse a number and silently overwrite an existing clip
+        // file. is_clipping serializes clip creation, so this scan is race-free.
+        let clip_number = guard
+            .ctrl
+            .clipper
+            .next_clip_number(&video_path, guard.ctrl.settings.output_dir.as_deref())
+            .map_err(|e| e.to_string())?;
         let output = match guard.ctrl.clipper.output_path(
             &video_path,
             clip_number,
@@ -256,10 +274,35 @@ pub async fn save_clip_logic(
     }; // MutexGuard dropped here, but is_clipping stays true
 
     // Phase 2: FFmpeg execution (no lock held - other commands can proceed)
-    let result = clipper
-        .save_clip(&video_path, start_time, end_time, &output_path)
-        .await
-        .map_err(|e| e.to_string());
+    //
+    // Spawn onto a task so that even if ffmpeg/the clipper panics, the JoinError
+    // is converted to an Err and Phase 3 still runs. Without this, a panic in
+    // save_clip would skip Phase 3 and leave is_clipping stuck true forever,
+    // blocking all future clips until the app is restarted.
+    let clip_task = tokio::task::spawn({
+        let clipper = clipper.clone();
+        let video_path = video_path.clone();
+        let output_path = output_path.clone();
+        async move {
+            clipper
+                .save_clip(&video_path, start_time, end_time, &output_path)
+                .await
+                .map_err(|e| e.to_string())
+        }
+    });
+    let result = match clip_task.await {
+        Ok(r) => r,
+        Err(join_err) => {
+            if join_err.is_panic() {
+                Err(format!(
+                    "Clip generation panicked: {:?}",
+                    join_err.into_panic()
+                ))
+            } else {
+                Err(format!("Clip task cancelled: {}", join_err))
+            }
+        }
+    };
 
     // Phase 3: Update state (re-acquire lock)
     {
@@ -412,6 +455,7 @@ mod tests {
                 clip_count: 0,
                 is_clipping: false,
                 clips_dir,
+                last_play_path: None,
             })),
             temp_dir,
         )

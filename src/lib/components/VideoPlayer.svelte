@@ -32,7 +32,11 @@
       api.startVideoServer(currentPath)
         .then(url => {
           if (!cancelled) {
-            videoUrl = url;
+            // Append a cache-buster so switching videos always changes the
+            // <video src> string. The local server reuses one port across
+            // videos, so without this the webview would keep showing the
+            // previously buffered video when the path changes.
+            videoUrl = `${url}?v=${Date.now()}`;
           }
         })
         .catch(e => {
