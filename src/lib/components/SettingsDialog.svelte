@@ -9,6 +9,28 @@
   // Client-side validation errors
   let validationErrors = $state<{[key: string]: string}>({});
 
+  // Snapshot of settings taken when the dialog opens, used to detect unsaved
+  // changes and confirm before discarding them on cancel/backdrop/Escape.
+  let snapshot = $state<string>('');
+
+  function settingsSignature(s: Settings): string {
+    return JSON.stringify({
+      buffer_before: s.buffer_before,
+      buffer_after: s.buffer_after,
+      clip_key: s.clip_key,
+      output_dir: s.output_dir,
+      theme: s.theme,
+    });
+  }
+
+  // Refresh the snapshot whenever the dialog is (re)opened so dirty detection
+  // starts from the current values rather than a stale prior session.
+  $effect(() => {
+    if (open) {
+      snapshot = settingsSignature(settings);
+    }
+  });
+
   function validate(): boolean {
     const errors: {[key: string]: string} = {};
 
@@ -37,6 +59,7 @@
     isSaving = true;
     try {
       await onsave?.(settings);
+      snapshot = settingsSignature(settings);
       open = false;
     } catch (error) {
       // Don't close dialog on error, let user see the error
@@ -48,6 +71,10 @@
 
   function cancel() {
     if (isSaving) return;
+    const hasChanges = settingsSignature(settings) !== snapshot;
+    if (hasChanges && !confirm('Discard unsaved changes?')) {
+      return;
+    }
     oncancel?.();
     open = false;
   }

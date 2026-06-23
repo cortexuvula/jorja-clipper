@@ -48,6 +48,18 @@ impl Converter {
     ) -> AppResult<PathBuf> {
         let output_path = Self::get_output_path(input_path, output_dir)?;
 
+        // Cache: if a valid converted file already exists and is at least as
+        // new as the input, reuse it instead of re-running ffmpeg. This makes
+        // re-opening a previously converted video near-instant.
+        if Self::is_valid_cached_output(&output_path, input_path) {
+            let _ = progress_tx
+                .send(ConversionStatus::Completed {
+                    output_path: output_path.clone(),
+                })
+                .await;
+            return Ok(output_path);
+        }
+
         // Get input duration first
         let duration = Self::get_duration(input_path).await?;
         let _ = progress_tx
@@ -74,8 +86,16 @@ impl Converter {
             }
         }
 
-        // Transcode (slower but more compatible)
-        Self::convert_with_transcode(input_path, &output_path, duration, &progress_tx).await?;
+        // Transcode (slower but more compatible). On failure emit a Failed
+        // status so the frontend conversion overlay clears instead of hanging.
+        if let Err(e) =
+            Self::convert_with_transcode(input_path, &output_path, duration, &progress_tx).await
+        {
+            let _ = progress_tx
+                .send(ConversionStatus::Failed(e.to_string()))
+                .await;
+            return Err(e);
+        }
 
         let _ = progress_tx
             .send(ConversionStatus::Completed {
@@ -84,6 +104,24 @@ impl Converter {
             .await;
 
         Ok(output_path)
+    }
+
+    /// Returns true if `output_path` is a usable cached conversion: it exists,
+    /// is non-empty, and was modified at or after the input file's mtime.
+    fn is_valid_cached_output(output_path: &Path, input_path: &Path) -> bool {
+        let (Ok(out_meta), Ok(in_meta)) = (
+            std::fs::metadata(output_path),
+            std::fs::metadata(input_path),
+        ) else {
+            return false;
+        };
+        if out_meta.len() == 0 {
+            return false;
+        }
+        match (out_meta.modified(), in_meta.modified()) {
+            (Ok(out_m), Ok(in_m)) => out_m >= in_m,
+            _ => false,
+        }
     }
 
     /// Get output path for converted file
@@ -251,7 +289,13 @@ impl Converter {
             if let Some(time_str) = line.split("time=").nth(1) {
                 if let Some(time_end) = time_str.split_whitespace().next() {
                     if let Ok(current_time) = Self::parse_ffmpeg_time(time_end) {
-                        let progress = (current_time / duration * 100.0).min(100.0);
+                        // Guard against duration == 0 (malformed containers),
+                        // which would otherwise produce inf/NaN progress.
+                        let progress = if duration > 0.0 {
+                            (current_time / duration * 100.0).min(100.0)
+                        } else {
+                            0.0
+                        };
 
                         // Throttle updates to max 10 per second
                         if last_progress_time.elapsed() > Duration::from_millis(100) {

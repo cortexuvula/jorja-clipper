@@ -1,6 +1,6 @@
 {
   "productName": "Jorja Clipper",
-  "version": "0.5.16",
+  "version": "0.6.1",
   "identifier": "com.jorja.clipper",
   "build": {
     "frontendDist": "../dist",

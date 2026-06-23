@@ -123,10 +123,24 @@ pub fn ffprobe_sidecar_name() -> String {
 }
 
 /// Get the application config directory.
+///
+/// Falls back from the platform config dir → the user's home/.config → the
+/// current working directory, so the app keeps working (with a warning) even
+/// in sandboxed/headless contexts where `dirs::config_dir()` returns None.
 pub fn app_config_dir() -> PathBuf {
-    dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("jorja-clipper")
+    let base = dirs::config_dir().or_else(|| {
+        dirs::home_dir().map(|h| {
+            eprintln!("[warn] Platform config dir unavailable; using ~/.config as fallback");
+            h.join(".config")
+        })
+    });
+    let base = base.unwrap_or_else(|| {
+        eprintln!(
+            "[warn] Could not resolve config or home directory; using current working directory"
+        );
+        PathBuf::from(".")
+    });
+    base.join("jorja-clipper")
 }
 
 #[cfg(test)]

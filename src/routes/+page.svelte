@@ -120,7 +120,7 @@
     try {
       const result = await api.saveClip(position, duration);
       if (result.success) {
-        const filename = result.path.split('/').pop() ?? result.path;
+        const filename = result.path.split(/[\\/]/).pop() ?? result.path;
         showToast('Clip saved: ' + filename, 'success');
         await refreshClips();
       } else {
@@ -134,7 +134,7 @@
   async function deleteClip(clip: Clip) {
     try {
       await api.deleteClip(clip.id, clip.clip_path);
-      const filename = clip.clip_path.split('/').pop() ?? clip.clip_path;
+      const filename = clip.clip_path.split(/[\\/]/).pop() ?? clip.clip_path;
       showToast('Deleted: ' + filename, 'success');
       await refreshClips();
     } catch (e) {
@@ -219,7 +219,7 @@
         {#each clips as clip}
           <li class="clip-item">
             <div class="clip-info">
-              <div class="clip-name">{clip.clip_path.split('/').pop()}</div>
+              <div class="clip-name">{clip.clip_path.split(/[\\/]/).pop()}</div>
               <div class="clip-time">
                 {clip.start_time.toFixed(1)}s — {clip.end_time.toFixed(1)}s
               </div>

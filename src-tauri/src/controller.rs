@@ -78,6 +78,10 @@ pub struct Controller {
     pub clip_count: i32,
     pub is_clipping: bool,
     pub clips_dir: PathBuf,
+    /// Path of the file currently being played back (the converted MP4 when a
+    /// conversion happened, otherwise the source). The background cleanup task
+    /// reads this so it never deletes a converted file the user is watching.
+    pub last_play_path: Option<PathBuf>,
 }
 
 impl Controller {
@@ -104,6 +108,7 @@ impl Controller {
             clip_count: 0,
             is_clipping: false,
             clips_dir,
+            last_play_path: None,
         })
     }
 
@@ -131,7 +136,11 @@ impl Controller {
                 }
             }
 
-            // Update clip_count to reflect actual number of valid clips
+            // NOTE: clip numbering is NOT derived from clip_count. It is
+            // derived from the highest existing clip file on disk in
+            // Clipper::next_clip_number, so deleting clips never causes the
+            // next clip to reuse a number and overwrite an existing file.
+            // We still mirror the current count here for diagnostics only.
             self.clip_count = valid_clips.len() as i32;
 
             Ok(valid_clips)
@@ -153,6 +162,48 @@ impl Controller {
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    /// Serialize tests that mutate process-global environment variables.
+    /// Rust runs tests in parallel by default; without this, an env-mutating
+    /// test can race against other tests that read the same variable
+    /// (e.g. anything calling app_config_dir, which reads XDG_CONFIG_HOME).
+    ///
+    /// Uses tokio's async-aware Mutex so the guard can be held across `.await`
+    /// points (clippy flags holding a std Mutex across an await). Wrapped in
+    /// OnceLock because `tokio::sync::Mutex::new` is not const.
+    async fn env_lock() -> tokio::sync::MutexGuard<'static, ()> {
+        static ENV_LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
+        ENV_LOCK
+            .get_or_init(|| tokio::sync::Mutex::new(()))
+            .lock()
+            .await
+    }
+
+    /// RAII guard that restores the previous value of an env var on drop.
+    /// Used so env-mutating tests never leak their changes to the rest of the
+    /// test process, even if they panic.
+    struct EnvVarGuard {
+        key: String,
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl EnvVarGuard {
+        fn set<K: Into<String>, V: AsRef<std::ffi::OsStr>>(key: K, value: V) -> Self {
+            let key = key.into();
+            let previous = std::env::var_os(&key);
+            std::env::set_var(&key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(val) => std::env::set_var(&self.key, val),
+                None => std::env::remove_var(&self.key),
+            }
+        }
+    }
 
     fn create_test_controller() -> (Controller, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -177,6 +228,7 @@ mod tests {
             clip_count: 0,
             is_clipping: false,
             clips_dir: temp_dir.path().join("clips"),
+            last_play_path: None,
         };
 
         (controller, temp_dir)
@@ -544,15 +596,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_controller_new_creates_clips_directory() {
+        // This test mutates a process-global env var (XDG_CONFIG_HOME). Other
+        // tests in the crate call app_config_dir() and would observe this
+        // value if it leaked. Use ENV_LOCK to serialize against any other
+        // env-mutating test, and EnvVarGuard to restore the prior value.
+        let _env_lock = env_lock().await;
         let temp_dir = tempfile::tempdir().unwrap();
-
-        // Set a custom config directory for this test
-        std::env::set_var("XDG_CONFIG_HOME", temp_dir.path());
+        let _guard = EnvVarGuard::set("XDG_CONFIG_HOME", temp_dir.path());
 
         let controller = Controller::new().await.unwrap();
 
         // Controller should be created successfully
         assert_eq!(controller.clip_count, 0);
+        assert!(controller.last_play_path.is_none());
         assert!(!controller.is_clipping);
         assert!(controller.current_video.is_none());
 
