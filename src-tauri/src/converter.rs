@@ -50,7 +50,10 @@ impl Converter {
 
         // Cache: if a valid converted file already exists and is at least as
         // new as the input, reuse it instead of re-running ffmpeg. This makes
-        // re-opening a previously converted video near-instant.
+        // re-opening a previously converted video near-instant. Only Completed
+        // is emitted here (no Started), so the frontend conversion overlay is
+        // never shown for a cache hit — the per-video state reset happens in
+        // VideoPlayer's videoPath effect.
         if Self::is_valid_cached_output(&output_path, input_path) {
             let _ = progress_tx
                 .send(ConversionStatus::Completed {
