@@ -28,6 +28,15 @@
     const currentPath = videoPath;
     let cancelled = false;
 
+    // Reset conversion display state for every (re)open so stale progress
+    // values from a previous video don't bleed into this one. A cache hit
+    // emits Completed without a preceding Started, so without this reset the
+    // overlay text would briefly read the prior video's percentage/duration.
+    isConverting = false;
+    conversionProgress = 0;
+    conversionDuration = 0;
+    isTranscoding = false;
+
     if (currentPath) {
       api.startVideoServer(currentPath)
         .then(url => {

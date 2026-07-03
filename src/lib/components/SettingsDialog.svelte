@@ -6,6 +6,11 @@
 
   let isSaving = $state(false);
 
+  // True when the user tried to cancel/close with unsaved changes and is being
+  // asked to confirm the discard. Replaces a blocking OS confirm() with an
+  // in-app styled prompt consistent with the rest of the UI.
+  let pendingDiscard = $state(false);
+
   // Client-side validation errors
   let validationErrors = $state<{[key: string]: string}>({});
 
@@ -23,11 +28,16 @@
     });
   }
 
+  function hasUnsavedChanges(): boolean {
+    return settingsSignature(settings) !== snapshot;
+  }
+
   // Refresh the snapshot whenever the dialog is (re)opened so dirty detection
   // starts from the current values rather than a stale prior session.
   $effect(() => {
     if (open) {
       snapshot = settingsSignature(settings);
+      pendingDiscard = false;
     }
   });
 
@@ -69,14 +79,27 @@
     }
   }
 
-  function cancel() {
+  // Attempt to close the dialog. If there are unsaved changes, surface an
+  // in-app confirmation instead of discarding immediately.
+  function requestCancel() {
     if (isSaving) return;
-    const hasChanges = settingsSignature(settings) !== snapshot;
-    if (hasChanges && !confirm('Discard unsaved changes?')) {
-      return;
+    if (hasUnsavedChanges()) {
+      pendingDiscard = true;
+    } else {
+      doCancel();
     }
+  }
+
+  // Actually discard changes and close.
+  function doCancel() {
+    pendingDiscard = false;
     oncancel?.();
     open = false;
+  }
+
+  // Keep editing — dismiss the discard confirmation.
+  function keepEditing() {
+    pendingDiscard = false;
   }
 
   async function selectDirectory() {
@@ -100,7 +123,7 @@
 </script>
 
 {#if open}
-  <div class="modal-backdrop" onclick={cancel} onkeydown={(e) => { if (e.key === 'Escape') cancel(); }} role="presentation">
+  <div class="modal-backdrop" onclick={requestCancel} onkeydown={(e) => { if (e.key === 'Escape') requestCancel(); }} role="presentation">
     <div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
       <h2>Settings</h2>
 
@@ -173,12 +196,31 @@
 
       <div class="actions">
         <button onclick={resetToDefaults} class="btn-secondary">Reset to Defaults</button>
-        <button onclick={cancel} disabled={isSaving}>Cancel</button>
+        <button onclick={requestCancel} disabled={isSaving}>Cancel</button>
         <button onclick={save} disabled={isSaving}>
           {isSaving ? 'Saving...' : 'Save'}
         </button>
       </div>
     </div>
+
+    {#if pendingDiscard}
+      <div
+        class="confirm-overlay"
+        onclick={(e) => e.stopPropagation()}
+        onkeydown={(e) => e.stopPropagation()}
+        role="alertdialog"
+        aria-modal="true"
+        aria-label="Discard unsaved changes?"
+        tabindex="-1"
+      >
+        <p class="confirm-title">Discard unsaved changes?</p>
+        <p class="confirm-body">Your edits to these settings will be lost.</p>
+        <div class="confirm-actions">
+          <button onclick={keepEditing} class="btn-secondary">Keep editing</button>
+          <button onclick={doCancel} class="btn-danger">Discard</button>
+        </div>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -294,5 +336,47 @@
 
   .btn-secondary:hover {
     background: var(--bg-secondary);
+  }
+
+  .btn-danger {
+    background: var(--danger);
+    color: var(--danger-text);
+  }
+
+  .btn-danger:hover {
+    filter: brightness(1.1);
+  }
+
+  .confirm-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border-radius: 8px;
+    z-index: 10001;
+    padding: 2rem;
+    box-sizing: border-box;
+  }
+
+  .confirm-title {
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    color: var(--text-primary);
+  }
+
+  .confirm-body {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin: 0 0 1.5rem;
+  }
+
+  .confirm-actions {
+    display: flex;
+    gap: 0.5rem;
   }
 </style>

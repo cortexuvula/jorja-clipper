@@ -54,24 +54,38 @@ impl Clipper {
         clip_number: i32,
         output_dir: Option<&Path>,
     ) -> AppResult<PathBuf> {
-        let clips_dir = match output_dir {
-            Some(dir) => dir.to_path_buf(),
-            None => video_path
-                .parent()
-                .ok_or_else(|| AppError::Ffmpeg("Video has no parent directory".to_string()))?
-                .join("clips"),
-        };
-
+        let clips_dir = Self::clips_dir_for(video_path, output_dir)?;
         std::fs::create_dir_all(&clips_dir)?;
 
-        let video_stem = video_path
+        let clip_filename = format!("{}_{:05}.mp4", Self::clip_prefix(video_path)?, clip_number);
+        Ok(clips_dir.join(clip_filename))
+    }
+
+    /// Build the per-video prefix used for clip filenames.
+    ///
+    /// Format: `{stem}_[{hash}]` where `{hash}` is 4 hex chars derived from the
+    /// video's absolute path. Including the hash disambiguates two videos that
+    /// share a filename stem (e.g. two `game.mp4` files in different folders)
+    /// when the user has configured a shared `output_dir`. Without it, both
+    /// videos would write `{stem}_clip_NNNNN.mp4` into the same directory and
+    /// silently overwrite each other's clips. The hash is stable for a given
+    /// path, so reopening a video continues its numbering.
+    fn clip_prefix(video_path: &Path) -> AppResult<String> {
+        let stem = video_path
             .file_stem()
             .and_then(|s| s.to_str())
             .ok_or_else(|| AppError::Ffmpeg("Video has no filename".to_string()))?;
 
-        let clip_filename = format!("{}_clip_{:05}.mp4", video_stem, clip_number);
-
-        Ok(clips_dir.join(clip_filename))
+        // Hash the absolute path so two same-named files in different folders
+        // produce different prefixes. std::DefaultHasher is non-cryptographic
+        // but sufficient for disambiguation.
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let abs = std::fs::canonicalize(video_path).unwrap_or_else(|_| video_path.to_path_buf());
+        let mut hasher = DefaultHasher::new();
+        abs.hash(&mut hasher);
+        let hash = hasher.finish();
+        Ok(format!("{}_clip_{:08x}", stem, hash))
     }
 
     /// Resolve which output directory would be used for clips of `video_path`.
@@ -86,7 +100,7 @@ impl Clipper {
     }
 
     /// Determine the next clip number for `video_path` by scanning the output
-    /// directory for existing `{stem}_clip_NNNNN.mp4` files.
+    /// directory for existing `{prefix}_NNNNN.mp4` files for *this* video.
     ///
     /// This is the authoritative source for clip numbering because it reflects
     /// what is actually on disk. Deriving the number from the DB row count or
@@ -95,14 +109,13 @@ impl Clipper {
     /// next clip to reuse a number and silently overwrite an existing file.
     /// Scanning the disk guarantees the next number is strictly greater than
     /// any existing clip file for this video.
+    ///
+    /// Matching is keyed on the per-video `clip_prefix` (which includes a hash
+    /// of the video path), so clips from other videos in the same shared
+    /// `output_dir` are correctly ignored.
     pub fn next_clip_number(&self, video_path: &Path, output_dir: Option<&Path>) -> AppResult<i32> {
         let clips_dir = Self::clips_dir_for(video_path, output_dir)?;
-        let stem = video_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .ok_or_else(|| AppError::Ffmpeg("Video has no filename".to_string()))?;
-
-        let prefix = format!("{}_clip_", stem);
+        let prefix = format!("{}_", Self::clip_prefix(video_path)?);
         let mut max_number: i32 = 0;
 
         if let Ok(entries) = std::fs::read_dir(&clips_dir) {
@@ -163,7 +176,7 @@ impl Clipper {
         .await;
 
         let needs_transcode_retry = match copy_run {
-            Ok(()) => !Self::looks_like_valid_clip(output_path),
+            Ok(()) => !Self::clip_has_valid_duration(output_path, start_time, end_time).await,
             Err(_) => true,
         };
 
@@ -259,13 +272,59 @@ impl Clipper {
         Ok(())
     }
 
-    /// Heuristic: a real clip should be at least a few KB. Smaller outputs
-    /// usually mean stream-copy landed mid-GOP and produced a degenerate file.
-    fn looks_like_valid_clip(output_path: &Path) -> bool {
-        match std::fs::metadata(output_path) {
-            Ok(m) => m.len() >= 1024,
-            Err(_) => false,
+    /// Probe the produced clip with ffprobe to decide whether the stream-copy
+    /// output is usable.
+    ///
+    /// The earlier heuristic checked only file size in bytes, which flagged
+    /// legitimately short / low-bitrate clips as "degenerate" and needlessly
+    /// re-encoded them (quality loss + slower). Probing the actual duration is
+    /// accurate: a clip is considered invalid only if it cannot be parsed by
+    /// ffprobe or its measured duration is far below what was requested
+    /// (less than half, with a small absolute floor), which is the real
+    /// signature of a mid-GOP stream-copy failure.
+    async fn clip_has_valid_duration(output_path: &Path, start_time: f64, end_time: f64) -> bool {
+        let Some(out_str) = output_path.to_str() else {
+            return false;
+        };
+        if !output_path.exists() {
+            return false;
         }
+
+        let mut cmd = Command::new(crate::util::resolve_binary("ffprobe"));
+        cmd.args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            out_str,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+        // Prevent console window from appearing on Windows
+        #[cfg(windows)]
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let output = match cmd.output().await {
+            Ok(o) => o,
+            Err(_) => return false,
+        };
+        if !output.status.success() {
+            return false;
+        }
+        let parsed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let Ok(measured) = parsed.parse::<f64>() else {
+            return false;
+        };
+
+        let requested = (end_time - start_time).max(0.0);
+        // Allow a generous tolerance (half the requested duration, floored at
+        // 0.1s) because stream-copy snaps to keyframes and may be slightly
+        // shorter than requested. Anything drastically shorter is suspect.
+        let floor = (requested * 0.5).max(0.1);
+        measured >= floor
     }
 }
 
@@ -320,7 +379,13 @@ mod tests {
         let output = clipper.output_path(&video_path, 1, None).unwrap();
 
         assert!(output.to_str().unwrap().contains("clips/"));
-        assert!(output.to_str().unwrap().contains("game_clip_00001.mp4"));
+        // New format includes a per-video hash: game_clip_<hash>_00001.mp4
+        assert!(
+            output.to_str().unwrap().contains("game_clip_"),
+            "filename should start with stem prefix: {}",
+            output.display()
+        );
+        assert!(output.to_str().unwrap().ends_with("_00001.mp4"));
 
         // Clean up
         let _ = std::fs::remove_dir_all(&tmp_dir);
@@ -340,14 +405,16 @@ mod tests {
     fn test_next_clip_number_picks_max_plus_one() {
         let clipper = Clipper::new(5.0, 5.0);
         let tmp_dir = tempfile::TempDir::new().unwrap();
-        let clips_dir = tmp_dir.path().join("clips");
-        std::fs::create_dir_all(&clips_dir).unwrap();
         let video_path = tmp_dir.path().join("game.mp4");
 
         // Pretend clips 1, 2, and 5 already exist (simulating prior deletions
         // of 3 and 4 — the next number must be 6, never reusing a gap).
+        // Generate the files via output_path so they carry the real per-video
+        // prefix (including the path hash) that next_clip_number matches on.
         for n in [1, 2, 5] {
-            std::fs::write(clips_dir.join(format!("game_clip_{:05}.mp4", n)), "x").unwrap();
+            let p = clipper.output_path(&video_path, n, None).unwrap();
+            std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+            std::fs::write(&p, "x").unwrap();
         }
 
         assert_eq!(clipper.next_clip_number(&video_path, None).unwrap(), 6);
@@ -366,6 +433,36 @@ mod tests {
         std::fs::write(clips_dir.join("game_converted.mp4"), "x").unwrap();
 
         assert_eq!(clipper.next_clip_number(&video_path, None).unwrap(), 1);
+    }
+
+    #[test]
+    fn test_clip_numbering_disambiguates_same_stem_in_shared_output_dir() {
+        // N1 regression: two videos that share a filename stem (e.g. two
+        // `game.mp4` files in different folders) must get distinct clip
+        // filenames when the user configures a shared output_dir. Previously
+        // both would write `game_clip_NNNNN.mp4` and overwrite each other.
+        let clipper = Clipper::new(5.0, 5.0);
+        let shared_dir = tempfile::TempDir::new().unwrap();
+        let out = shared_dir.path().to_path_buf();
+
+        // Simulate two source videos with the same stem but different parents.
+        let video_a = tempfile::TempDir::new().unwrap().path().join("game.mp4");
+        let video_b = tempfile::TempDir::new().unwrap().path().join("game.mp4");
+
+        // Each video's clip path must be distinct, and must not equal the
+        // other video's path for the same clip number.
+        let a1 = clipper.output_path(&video_a, 1, Some(&out)).unwrap();
+        let b1 = clipper.output_path(&video_b, 1, Some(&out)).unwrap();
+        assert_ne!(
+            a1, b1,
+            "same-stem videos in a shared output dir must produce distinct clip filenames"
+        );
+
+        // Persist one clip for video A, then confirm video B's next number is
+        // still 1 (it does NOT inherit A's count) and video A's is 2.
+        std::fs::write(&a1, "x").unwrap();
+        assert_eq!(clipper.next_clip_number(&video_a, Some(&out)).unwrap(), 2);
+        assert_eq!(clipper.next_clip_number(&video_b, Some(&out)).unwrap(), 1);
     }
 
     #[tokio::test]
@@ -429,7 +526,12 @@ mod tests {
         let output = clipper.output_path(video_path, 42, Some(&tmp_dir)).unwrap();
 
         assert!(output.starts_with(&tmp_dir));
-        assert!(output.to_str().unwrap().contains("video_clip_00042.mp4"));
+        assert!(
+            output.to_str().unwrap().contains("video_clip_"),
+            "filename should contain stem prefix: {}",
+            output.display()
+        );
+        assert!(output.to_str().unwrap().ends_with("_00042.mp4"));
 
         let _ = std::fs::remove_dir_all(&tmp_dir);
     }
@@ -474,6 +576,65 @@ mod tests {
 
         assert_eq!(cloned.buffer_before, 5.0);
         assert_eq!(cloned.buffer_after, 10.0);
+    }
+
+    #[tokio::test]
+    async fn test_clip_has_valid_duration_accepts_real_short_clip() {
+        // N2 regression: a legitimately short (but valid) clip must be treated
+        // as valid, not flagged for transcode re-encode purely on size.
+        use tempfile::TempDir;
+        use tokio::process::Command;
+
+        let temp_dir = TempDir::new().unwrap();
+        let clip_path = temp_dir.path().join("short.mp4");
+
+        // Render a genuine 0.5s clip — small in bytes but valid.
+        let out = Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=blue:s=160x120:d=0.5",
+                "-c:v",
+                "libx264",
+                "-t",
+                "0.5",
+                clip_path.to_str().unwrap(),
+            ])
+            .output()
+            .await
+            .unwrap();
+        assert!(out.status.success(), "ffmpeg should produce a test clip");
+
+        // Requested 0.5s; the file is valid, so the probe must say so.
+        assert!(
+            Clipper::clip_has_valid_duration(&clip_path, 0.0, 0.5).await,
+            "a valid short clip must not be flagged as degenerate"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_clip_has_valid_duration_rejects_corrupt_and_empty() {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+
+        // Empty file: ffprobe will fail to parse.
+        let empty = temp_dir.path().join("empty.mp4");
+        std::fs::write(&empty, b"").unwrap();
+        assert!(
+            !Clipper::clip_has_valid_duration(&empty, 0.0, 2.0).await,
+            "empty file should be flagged as invalid"
+        );
+
+        // Garbage bytes: ffprobe will fail to parse.
+        let corrupt = temp_dir.path().join("corrupt.mp4");
+        std::fs::write(&corrupt, b"not a video at all").unwrap();
+        assert!(
+            !Clipper::clip_has_valid_duration(&corrupt, 0.0, 2.0).await,
+            "corrupt file should be flagged as invalid"
+        );
     }
 
     #[tokio::test]
@@ -609,11 +770,17 @@ mod tests {
             let result = clipper.output_path(&video_path, i, None);
             assert!(result.is_ok());
             let output_path = result.unwrap();
-            // Clip numbers are zero-padded to 5 digits
-            assert!(output_path
-                .to_str()
-                .unwrap()
-                .contains(&format!("clip_{:05}", i)));
+            // Clip numbers are zero-padded to 5 digits and appear after the
+            // per-video prefix (stem_clip_<hash>_NNNNN.mp4).
+            assert!(
+                output_path
+                    .to_str()
+                    .unwrap()
+                    .ends_with(&format!("_{:05}.mp4", i)),
+                "expected clip number suffix _{:05}.mp4 in {}",
+                i,
+                output_path.display()
+            );
         }
     }
 
